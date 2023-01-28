@@ -15,6 +15,8 @@ extern FILE *yyin;
 extern int line_count;
 extern int error_count;
 
+ofstream asmout, optout;
+long dataPosition;
 SymbolTable *table;
 Symbols *paras;
 FILE *fp;
@@ -1163,16 +1165,28 @@ int main(int argc,char *argv[])
 		printf("Cannot Open Input File.\n");
 		exit(1);
 	}
+
+    asmout.open("code.asm");
+    optout.open("optimized_code.asm");
 	
 	paras = NULL;
 	
 	table = new SymbolTable(11);
 
+    //initializing the asm file
+    asmout<<".MODEL SMALL"<<endl;
+    asmout<<".STACK 100H"<<endl;
+    asmout<<".DATA"<<endl;
+    dataPosition = asmout.tellp();
+    asmout<<".CODE"<<endl;
+
 	yyin=fp;
 	yyparse();
 	
 	delete table;
-	
+	fclose(fp);
+    asmout.close();
+    optout.close();
 	return 0;
 }
 
