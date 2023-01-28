@@ -15,7 +15,6 @@ extern FILE *yyin;
 extern int line_count;
 extern int error_count;
 
-ofstream logout, error, tree;
 SymbolTable *table;
 Symbols *paras;
 FILE *fp;
@@ -26,7 +25,6 @@ int error_line;
 void yyerror(char *s)
 {
     error_line = line_count;
-    logout<<"Error at line no "<<error_line<<" : syntax error"<<endl;
 	//write your code
 }
 
@@ -35,7 +33,6 @@ void idTypeSetter(string str, Symbols* si)
     int size = si->length();
     for(int i=0; i<size; i++){
         if(str == "VOID") {
-            error<<"Line# "<<line_count<<": Variable or field '"<<si->v[i].getName()<<"' declared void"<<endl;
             error_count++;
         }
         else if(si->v[i].getType() == "ARRAY") {
@@ -46,15 +43,12 @@ void idTypeSetter(string str, Symbols* si)
             }
             else{
                 if(inf->getType() != "ARRAY") {
-                    error<<"Line# "<<line_count<<": '"<<sm.getName()<<"' redeclared as different kind of symbol"<<endl;
                     error_count++;
                 }
                 else if(inf->getRetType() != str) {
-                    error<<"Line# "<<line_count<<": Conflicting types for '"<<sm.getName()<<"'"<<endl;
                     error_count++;
                 }
                 else {
-                    error<<"Line# "<<line_count<<": Redefinition of variable '"<<sm.getName()<<"'"<<endl;
                     error_count++;
                 }
             }
@@ -67,15 +61,12 @@ void idTypeSetter(string str, Symbols* si)
             }
             else{
                 if(inf->getType() == "ARRAY" || inf->getType() == "FUNCTION") {
-                    error<<"Line# "<<line_count<<": '"<<sm.getName()<<"' redeclared as different kind of symbol"<<endl;
                     error_count++;
                 }
                 else if(inf->getType() != str) {
-                    error<<"Line# "<<line_count<<": Conflicting types for '"<<sm.getName()<<"'"<<endl;
                     error_count++;
                 }
                 else {
-                    error<<"Line# "<<line_count<<": Redefinition of variable '"<<sm.getName()<<"'"<<endl;
                     error_count++;
                 }
             }
@@ -91,12 +82,10 @@ void addParameter()
     }
     for(int i=0; i<paras->length(); i++){
         if(paras->v[i].getType()=="VOID" && (paras->v[i].getName()!="" || paras->length()!=1)){
-            error<<"Line# "<<paras->v[i].start<<": Variable or field '"<<paras->v[i].getName()<<"' declared void"<<endl;
             error_count++;
             break;
         }
         else if(table->lookUpCurrent(paras->v[i].getName()) != NULL){
-            error<<"Line# "<<paras->v[i].start<<": Redefinition of parameter '"<<paras->v[i].getName()<<"'"<<endl;
             error_count++;
             break;
         }
@@ -110,7 +99,6 @@ void addParameter()
 void declareFunction(SymbolInfo *si, Symbols *par, string ret)
 {
     if(table->lookUpCurrent(si->getName()) != NULL){
-        error<<"Line# "<<line_count<<": Function '"<<si->getName()<<"' was declared earlier"<<endl;
         error_count++;
         return;
     }
@@ -118,7 +106,6 @@ void declareFunction(SymbolInfo *si, Symbols *par, string ret)
     fun->setRetType(ret);
     for(int i=0; i<par->length(); i++){
         if(par->v[i].getType()=="VOID" && (par->v[i].getName()!="" || par->length()!=1)){
-            error<<"Line# "<<line_count<<": Variable or field '"<<par->v[i].getName()<<"' declared void"<<endl;
             error_count++;
             continue;
         }
@@ -130,7 +117,6 @@ void declareFunction(SymbolInfo *si, Symbols *par, string ret)
 void declareFunction(SymbolInfo *si, string ret)
 {
     if(table->lookUpCurrent(si->getName()) != NULL){
-        error<<"Line# "<<line_count<<": Function '"<<si->getName()<<"' was declared earlier"<<endl;
         error_count++;
         return;
     }
@@ -143,31 +129,25 @@ void checkDefinition(SymbolInfo* fun, string ret, Symbols *par)
 {
     paras = par;
     if(fun->isDef){
-        error<<"Line# "<<line_count<<": Function '"<<fun->getName()<<"' was defined earlier"<<endl;
         error_count++;
         return;
     }
     fun->isDef = true;
     if(fun->getType() != "FUNCTION"){
-        error<<"Line# "<<line_count<<": '"<<fun->getName()<<"' redeclared as different kind of symbol"<<endl;
         error_count++;
     }
     else if(fun->getRetType() != ret){
-        error<<"Line# "<<line_count<<": Conflicting types for '"<<fun->getName()<<"'"<<endl;
         error_count++;
     }
     else if(par==NULL && fun->paramType.size()!=0){
-        error<<"Line# "<<line_count<<": Conflicting types for '"<<fun->getName()<<"'"<<endl;
         error_count++;
     }
     else if(par!=NULL && fun->paramType.size() != par->length()){
-        error<<"Line# "<<line_count<<": Conflicting types for '"<<fun->getName()<<"'"<<endl;
         error_count++;
     }
     else if(par!=NULL){
         for(int i=0; i<par->length(); i++){
             if(fun->paramType[i] != par->v[i].getType()){
-                error<<"Line# "<<line_count<<": Conflicting types for '"<<fun->getName()<<"'"<<endl;
                 error_count++;
                 break;
             }
@@ -197,17 +177,14 @@ void defineFunction(SymbolInfo *si, string ret, Symbols *par = NULL)
 void checkArguments(SymbolInfo *fun, Symbols* args)
 {
     if(fun->paramType.size() > args->length()){
-        error<<"Line# "<<line_count<<": Too few arguments to function '"<<fun->getName()<<"'"<<endl;
         error_count++;
     }
     else if(fun->paramType.size() < args->length()){
-        error<<"Line# "<<line_count<<": Too many arguments to function '"<<fun->getName()<<"'"<<endl;
         error_count++;
     }
     else{
         for(int i=0; i<fun->paramType.size(); i++){
             if(fun->paramType[i] != args->v[i].getType()){
-                error<<"Line# "<<line_count<<": Type mismatch for argument "<<i+1<<" of '"<<fun->getName()<<"'"<<endl;
                 error_count++;
             }
         }
@@ -235,22 +212,18 @@ void checkArguments(SymbolInfo *fun, Symbols* args)
 
 start : program
 	{
-		logout<<"start : program "<<endl;
         $$ = new SymbolInfo("", "");
         $$->nodeName = "start : program";
         $$->isLeaf = false;
         $$->start = $1->start;
         $$->end = $1->end;
         $$->children.push_back($1);
-        TreeHelp help;
-        help.printTree(tree, $$, 0);
-        help.deleteTree($$);
+        cout<<"Parse Done"<<endl;
 	}
 	;
 
 program : program unit 
                         {
-                            logout<<"program : program unit "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "program : program unit";
                             $$->isLeaf = false;
@@ -261,7 +234,6 @@ program : program unit
                         }
 	| unit
                 {
-                    logout<<"program : unit "<<endl;
                     $$ = new SymbolInfo("", "");
                     $$->nodeName = "program : unit";
                     $$->isLeaf = false;
@@ -273,7 +245,6 @@ program : program unit
 	
 unit : var_declaration
                         {
-                            logout<<"unit : var_declaration "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "unit : var_declaration";
                             $$->isLeaf = false;
@@ -283,7 +254,6 @@ unit : var_declaration
                         }
      | func_declaration
                         {
-                            logout<<"unit : func_declaration "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "unit : func_declaration";
                             $$->isLeaf = false;
@@ -293,7 +263,6 @@ unit : var_declaration
                         }
      | func_definition
                         {
-                            logout<<"unit : func_definition "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "unit : func_definition";
                             $$->isLeaf = false;
@@ -305,7 +274,6 @@ unit : var_declaration
      
 func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
                                                                             {
-                                                                                logout<<"func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON "<<endl;
                                                                                 declareFunction($2, $4, $1->getType());
                                                                                 $$ = new SymbolInfo("", "");
                                                                                 $$->nodeName = "func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON";
@@ -321,7 +289,6 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
                                                                             }
 		| type_specifier ID LPAREN RPAREN SEMICOLON
                                                     {
-                                                        logout<<"func_declaration : type_specifier ID LPAREN RPAREN SEMICOLON "<<endl;
                                                         declareFunction($2, $1->getType());
                                                         $$ = new SymbolInfo("", "");
                                                         $$->nodeName = "func_declaration : type_specifier ID LPAREN RPAREN SEMICOLON";
@@ -337,8 +304,7 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
 		;
 		 
 func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction($2, $1->getType(), $4);functionReturn=$1->getType();} compound_statement
-                                                                                    {
-                                                                                        logout<<"func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement "<<endl; 
+                                                                                    { 
                                                                                         $$ = new SymbolInfo("", "");
                                                                                         $$->nodeName = "func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement";
                                                                                         $$->isLeaf = false;
@@ -353,7 +319,6 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                     }
 		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();} compound_statement
                                                             {
-                                                                logout<<"func_definition : type_specifier ID LPAREN RPAREN compound_statement "<<endl;
                                                                 $$ = new SymbolInfo("", "");
                                                                 $$->nodeName = "func_definition : type_specifier ID LPAREN RPAREN compound_statement";
                                                                 $$->isLeaf = false;
@@ -367,7 +332,6 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
                                                                     {
-                                                                        error<<"Line# "<<error_line<<": Syntax error at parameter list of function definition"<<endl;
                                                                         error_count++;
                                                                         SymbolInfo *er = new SymbolInfo("", "");
                                                                         er->nodeName = "parameter_list : error";
@@ -391,7 +355,6 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
 
 parameter_list  : parameter_list COMMA type_specifier ID
                                                             {
-                                                                logout<<"parameter_list : parameter_list COMMA type_specifier ID "<<endl;
                                                                 $$ = new Symbols();
                                                                 for(int i=0; i<$1->length(); i++){
                                                                     $$->insert($1->v[i]);
@@ -410,7 +373,6 @@ parameter_list  : parameter_list COMMA type_specifier ID
                                                             }
 		| parameter_list COMMA type_specifier
                                                 {
-                                                    logout<<"parameter_list : parameter_list COMMA type_specifier "<<endl;
                                                     $$ = new Symbols();
                                                     for(int i=0; i<$1->length(); i++){
                                                         $$->insert($1->v[i]);
@@ -428,7 +390,6 @@ parameter_list  : parameter_list COMMA type_specifier ID
                                                 }
  		| type_specifier ID
                             {
-                                logout<<"parameter_list : type_specifier ID "<<endl;
                                 $$ = new Symbols();
                                 SymbolInfo si($2->getName(), $1->getType());
                                 si.start = line_count;
@@ -442,7 +403,6 @@ parameter_list  : parameter_list COMMA type_specifier ID
                             }
 		| type_specifier
                             {
-                                logout<<"parameter_list : type_specifier "<<endl;
                                 $$ = new Symbols();
                                 SymbolInfo si("", $1->getType());
                                 si.start = line_count;
@@ -458,8 +418,6 @@ parameter_list  : parameter_list COMMA type_specifier ID
  		
 compound_statement : LCURL {table->enterScope();addParameter();} statements RCURL 
                                                                     {
-                                                                        logout<<"compound_statement : LCURL statements RCURL "<<endl;
-                                                                        table->printAll(logout);
                                                                         table->exitScope();
                                                                         $$ = new SymbolInfo("", "");
                                                                         $$->nodeName = "compound_statement : LCURL statements RCURL";
@@ -472,8 +430,6 @@ compound_statement : LCURL {table->enterScope();addParameter();} statements RCUR
                                                                     }
  		    | LCURL {table->enterScope();addParameter();} RCURL
                                                     {
-                                                        logout<<"compound_statement : LCURL RCURL "<<endl;
-                                                        table->printAll(logout);
                                                         table->exitScope();
                                                         $$ = new SymbolInfo("", "");
                                                         $$->nodeName = "compound_statement : LCURL RCURL";
@@ -487,7 +443,6 @@ compound_statement : LCURL {table->enterScope();addParameter();} statements RCUR
  		    
 var_declaration : type_specifier declaration_list SEMICOLON     
                                                                 {
-                                                                    logout<<"var_declaration : type_specifier declaration_list SEMICOLON "<<endl;
                                                                     idTypeSetter($1->getType(), $2);
                                                                     $$ = new SymbolInfo("", "");
                                                                     $$->nodeName = "var_declaration : type_specifier declaration_list SEMICOLON";
@@ -500,7 +455,6 @@ var_declaration : type_specifier declaration_list SEMICOLON
                                                                 }
         | type_specifier error SEMICOLON
                                         {
-                                            error<<"Line# "<<error_line<<": Syntax error at declaration list of variable declaration"<<endl;
                                             error_count++;
                                             SymbolInfo *er = new SymbolInfo("", "");
                                             er->nodeName = "declaration_list : error";
@@ -520,7 +474,6 @@ var_declaration : type_specifier declaration_list SEMICOLON
  		 
 type_specifier	: INT 
                         {
-                            logout<<"type_specifier : INT "<<endl;
                             $$ = new SymbolInfo("", "INT");
                             $$->nodeName = "type_specifier : INT";
                             $$->isLeaf = false;
@@ -530,7 +483,6 @@ type_specifier	: INT
                         }
  		| FLOAT
                     {
-                        logout<<"type_specifier : FLOAT "<<endl;
                         $$ = new SymbolInfo("", "FLOAT");
                         $$->nodeName = "type_specifier : FLOAT";
                         $$->isLeaf = false;
@@ -540,7 +492,6 @@ type_specifier	: INT
                     }
  		| VOID
                     {
-                        logout<<"type_specifier : VOID "<<endl;
                         $$ = new SymbolInfo("", "VOID");
                         $$->nodeName = "type_specifier : VOID";
                         $$->isLeaf = false;
@@ -552,7 +503,6 @@ type_specifier	: INT
  		
 declaration_list : declaration_list COMMA ID    
                                                 {
-                                                    logout<<"declaration_list : declaration_list COMMA ID "<<endl;
                                                     $$ = new Symbols();
                                                     for(int i=0; i<$1->length(); i++){
                                                         $$->insert($1->v[i]);
@@ -568,7 +518,6 @@ declaration_list : declaration_list COMMA ID
                                                 }
  		  | declaration_list COMMA ID LSQUARE CONST_INT RSQUARE
                                                                     {
-                                                                        logout<<"declaration_list : declaration_list COMMA ID LSQUARE CONST_INT RSQUARE "<<endl;
                                                                         $$ = new Symbols();
                                                                         for(int i=0; i<$1->length(); i++){
                                                                             $$->insert($1->v[i]);
@@ -589,7 +538,6 @@ declaration_list : declaration_list COMMA ID
                                                             
  		  | ID   
                 {
-                    logout<<"declaration_list : ID "<<endl;
                     $$ = new Symbols();
                     $$->insert(*$1);
                     $$->nodeName = "declaration_list : ID";
@@ -600,7 +548,6 @@ declaration_list : declaration_list COMMA ID
                 }
  		  | ID LSQUARE CONST_INT RSQUARE 
                                             {
-                                                logout<<"declaration_list : ID LSQUARE CONST_INT RSQUARE "<<endl;
                                                 $$ = new Symbols();
                                                 $1->setType("ARRAY");
                                                 $$->insert(*$1);
@@ -617,7 +564,6 @@ declaration_list : declaration_list COMMA ID
  		  
 statements : statement
                         {
-                            logout<<"statements : statement "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "statements : statement";
                             $$->isLeaf = false;
@@ -627,7 +573,6 @@ statements : statement
                         }
 	   | statements statement
                         {
-                            logout<<"statements : statements statement "<<endl;
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "statements : statements statement";
                             $$->isLeaf = false;
@@ -640,7 +585,6 @@ statements : statement
 	   
 statement : var_declaration
                             {
-                                logout<<"statement : var_declaration "<<endl;
                                 $$ = new SymbolInfo("", "");
                                 $$->nodeName = "statement : var_declaration";
                                 $$->isLeaf = false;
@@ -650,7 +594,6 @@ statement : var_declaration
                             }
 	  | expression_statement
                             {
-                                logout<<"statement : expression_statement "<<endl;
                                 $$ = new SymbolInfo("", "");
                                 $$->nodeName = "statement : expression_statement";
                                 $$->isLeaf = false;
@@ -660,7 +603,6 @@ statement : var_declaration
                             }
 	  | compound_statement
                             {
-                                logout<<"statement : compound_statement "<<endl;
                                 $$ = new SymbolInfo("", "");
                                 $$->nodeName = "statement : compound_statement";
                                 $$->isLeaf = false;
@@ -670,7 +612,6 @@ statement : var_declaration
                             }
 	  | FOR LPAREN expression_statement expression_statement expression RPAREN statement
                                                                                         {
-                                                                                            logout<<"statement : FOR LPAREN expression_statement expression_statement expression RPAREN statement "<<endl;
                                                                                             $$ = new SymbolInfo("", "");
                                                                                             $$->nodeName = "statement : FOR LPAREN expression_statement expression_statement expression RPAREN statement";
                                                                                             $$->isLeaf = false;
@@ -686,7 +627,6 @@ statement : var_declaration
                                                                                         }
 	  | IF LPAREN expression RPAREN statement  %prec LOWER_THAN_ELSE 
                                                                     {
-                                                                        logout<<"statement : IF LPAREN expression RPAREN statement "<<endl;
                                                                         $$ = new SymbolInfo("", "");
                                                                         $$->nodeName = "statement : IF LPAREN expression RPAREN statement";
                                                                         $$->isLeaf = false;
@@ -700,7 +640,6 @@ statement : var_declaration
                                                                     }
 	  | IF LPAREN expression RPAREN statement ELSE statement
                                                             {
-                                                                logout<<"statement : IF LPAREN expression RPAREN statement ELSE statement "<<endl;
                                                                 $$ = new SymbolInfo("", "");
                                                                 $$->nodeName = "statement : IF LPAREN expression RPAREN statement ELSE statement";
                                                                 $$->isLeaf = false;
@@ -716,7 +655,6 @@ statement : var_declaration
                                                             }
 	  | WHILE LPAREN expression RPAREN statement
                                                 {
-                                                    logout<<"statement : WHILE LPAREN expression RPAREN statement "<<endl;
                                                     $$ = new SymbolInfo("", "");
                                                     $$->nodeName = "statement : WHILE LPAREN expression RPAREN statement";
                                                     $$->isLeaf = false;
@@ -730,9 +668,7 @@ statement : var_declaration
                                                 }
  	  | PRINTLN LPAREN ID RPAREN SEMICOLON
                                             {
-                                                logout<<"statement : PRINTLN LPAREN ID RPAREN SEMICOLON "<<endl;
                                                 if(!table->lookUp($3->getName())){
-                                                    error<<"Line# "<<line_count<<": Undeclared variable '"<<$3->getName()<<"'"<<endl;
                                                     error_count++;
                                                 }
                                                 $$ = new SymbolInfo("", "");
@@ -748,13 +684,10 @@ statement : var_declaration
                                             }
 	  | RETURN expression SEMICOLON
                                     {
-                                        logout<<"statement : RETURN expression SEMICOLON "<<endl;
                                         if(functionReturn == "VOID"){
-                                            error<<"Line# "<<line_count<<": Void function cannot return anything"<<endl;
                                             error_count++;
                                         }
                                         else if(functionReturn=="INT" && $2->getType()=="FLOAT"){
-                                            error<<"Line# "<<line_count<<": Warning: possible loss of data in assignment of FLOAT to INT"<<endl;
                                             error_count++;
                                         }
                                         $$ = new SymbolInfo("", "");
@@ -770,7 +703,6 @@ statement : var_declaration
 	  
 expression_statement 	: SEMICOLON
                                     {
-                                        logout<<"expression_statement : SEMICOLON "<<endl;
                                         $$ = new SymbolInfo("", "");
                                         $$->nodeName = "expression_statement : SEMICOLON";
                                         $$->isLeaf = false;
@@ -780,7 +712,6 @@ expression_statement 	: SEMICOLON
                                     }
 			| expression SEMICOLON
                                     {
-                                        logout<<"expression_statement : expression SEMICOLON "<<endl;
                                         $$ = new SymbolInfo("", "");
                                         $$->nodeName = "expression_statement : expression SEMICOLON";
                                         $$->isLeaf = false;
@@ -791,7 +722,6 @@ expression_statement 	: SEMICOLON
                                     } 
             | error SEMICOLON 
                                 {
-                                    error<<"Line# "<<error_line<<": Syntax error at expression of expression statement"<<endl;
                                     error_count++;
                                     SymbolInfo *er = new SymbolInfo("", "");
                                     er->nodeName = "expression : error";
@@ -810,16 +740,13 @@ expression_statement 	: SEMICOLON
 	  
 variable : ID 
             {
-                logout<<"variable : ID "<<endl;
                 $$ = new SymbolInfo("", "");
                 SymbolInfo *sim = table->lookUp($1->getName());
                 if(sim==NULL){
-                    error<<"Line# "<<line_count<<": Undeclared variable '"<<$1->getName()<<"'"<<endl;
                     error_count++;
                     $$->setType("ERROR");
                 }
                 else if(sim->getType()=="FUNCTION"){
-                    error<<"Line# "<<line_count<<": "<<$1->getName()<<" is a function"<<endl;
                     error_count++;
                     $$->setType("ERROR");
                 }
@@ -834,23 +761,19 @@ variable : ID
             }
 	 | ID LSQUARE expression RSQUARE 
                                     {
-                                        logout<<"variable : ID LSQUARE expression RSQUARE "<<endl;
                                         $$ = new SymbolInfo("", "");
                                         SymbolInfo *sim = table->lookUp($1->getName());
                                         if(sim==NULL){
-                                            error<<"Line# "<<line_count<<": Undeclared variable '"<<$1->getName()<<"'"<<endl;
                                             error_count++;
                                             $$->setType("ERROR");
                                         }
                                         else if(sim->getType()=="ARRAY"){
                                             $$->setType(sim->getRetType());
                                             if($3->getType()!="INT"){
-                                                error<<"Line# "<<line_count<<": Array subscript is not an integer"<<endl;
                                                 error_count++;
                                             }
                                         }
                                         else{
-                                            error<<"Line# "<<line_count<<": '"<<$1->getName()<<"' is not an array"<<endl;
                                             error_count++;
                                             $$->setType("ERROR");
                                         }
@@ -867,7 +790,6 @@ variable : ID
 	 
  expression : logic_expression	
                                 {
-                                    logout<<"expression : logic_expression "<<endl;
                                     $$ = new SymbolInfo($1->getName(), $1->getType());
                                     $$->nodeName = "expression : logic_expression";
                                     $$->isLeaf = false;
@@ -877,14 +799,11 @@ variable : ID
                                 }
 	   | variable ASSIGNOP logic_expression 	
                                             {
-                                                logout<<"expression : variable ASSIGNOP logic_expression "<<endl;
                                                 if($1->getType()=="VOID" || $3->getType()=="VOID"){
-                                                    error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                                     error_count++;
                                                     $$ = new SymbolInfo("", "ERROR");
                                                 }
                                                 else if($1->getType()=="INT" && $3->getType()=="FLOAT"){
-                                                    error<<"Line# "<<line_count<<": Warning: possible loss of data in assignment of FLOAT to INT"<<endl;
                                                     error_count++;
                                                     $$ = new SymbolInfo("", "INT");
                                                 }
@@ -903,7 +822,6 @@ variable : ID
 			
 logic_expression : rel_expression 
                                 {
-                                    logout<<"logic_expression : rel_expression "<<endl;
                                     $$ = new SymbolInfo($1->getName(), $1->getType());
                                     $$->nodeName = "logic_expression : rel_expression";
                                     $$->isLeaf = false;
@@ -913,9 +831,7 @@ logic_expression : rel_expression
                                 }
 		 | rel_expression LOGICOP rel_expression 
                                                 {
-                                                    logout<<"logic_expression : rel_expression LOGICOP rel_expression"<<endl;
                                                     if($1->getType()=="VOID" || $3->getType()=="VOID"){
-                                                        error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                                         error_count++;
                                                         $$ = new SymbolInfo("", "ERROR");
                                                     }
@@ -934,7 +850,6 @@ logic_expression : rel_expression
 			
 rel_expression	: simple_expression 
                                     {
-                                        logout<<"rel_expression : simple_expression "<<endl;
                                         $$ = new SymbolInfo($1->getName(), $1->getType());
                                         $$->nodeName = "rel_expression : simple_expression";
                                         $$->isLeaf = false;
@@ -944,9 +859,7 @@ rel_expression	: simple_expression
                                     }
 		| simple_expression RELOP simple_expression	
                                                     {
-                                                        logout<<"rel_expression : simple_expression RELOP simple_expression "<<endl;
                                                         if($1->getType()=="VOID" || $3->getType()=="VOID"){
-                                                            error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                                             error_count++;
                                                             $$ = new SymbolInfo("", "ERROR");
                                                         }
@@ -965,7 +878,6 @@ rel_expression	: simple_expression
 				
 simple_expression : term 
                         {
-                            logout<<"simple_expression : term "<<endl;
                             $$ = new SymbolInfo($1->getName(), $1->getType());
                             $$->nodeName = "simple_expression : term";
                             $$->isLeaf = false;
@@ -975,9 +887,7 @@ simple_expression : term
                         }
 		  | simple_expression ADDOP term 
                                         {
-                                            logout<<"simple_expression : simple_expression ADDOP term "<<endl;
                                             if($1->getType()=="VOID" || $3->getType()=="VOID"){
-                                                error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                                 error_count++;
                                                 $$ = new SymbolInfo("", "ERROR");
                                             }
@@ -1005,7 +915,6 @@ simple_expression : term
 					
 term :	unary_expression
                         {
-                            logout<<"term : unary_expression "<<endl;
                             $$ = new SymbolInfo($1->getName(), $1->getType());
                             $$->nodeName = "term : unary_expression";
                             $$->isLeaf = false;
@@ -1015,19 +924,15 @@ term :	unary_expression
                         }
      |  term MULOP unary_expression
                                     {
-                                        logout<<"term : term MULOP unary_expression "<<endl;
                                         if($1->getType()=="VOID" || $3->getType()=="VOID"){
-                                            error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }
                                         else if(($2->getName()=="%" || $2->getName()=="/") && $3->getName()=="0"){
-                                            error<<"Line# "<<line_count<<": Warning: division by zero i=0f=1Const=0"<<endl;
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }    
                                         else if($2->getName()=="%" && ($1->getType()=="FLOAT" || $3->getType()=="FLOAT")){
-                                            error<<"Line# "<<line_count<<": Operands of modulus must be integers"<<endl;
                                             error_count++;
                                             $$ = new SymbolInfo("", "INT");
                                         }
@@ -1061,9 +966,7 @@ term :	unary_expression
 
 unary_expression : ADDOP unary_expression  
                                             {
-                                                logout<<"unary_expression : ADDOP unary_expression "<<endl;
                                                 if($2->getType()=="VOID"){
-                                                    error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                                     error_count++;
                                                     $$ = new SymbolInfo("", "ERROR");
                                                     delete $2;
@@ -1080,9 +983,7 @@ unary_expression : ADDOP unary_expression
                                             }
 		 | NOT unary_expression 
                                 {
-                                    logout<<"unary_expression : NOT unary_expression "<<endl;
                                     if($2->getType()=="VOID"){
-                                        error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                                         error_count++;
                                         $$ = new SymbolInfo("", "ERROR");
                                     }
@@ -1098,7 +999,6 @@ unary_expression : ADDOP unary_expression
                                 }
 		 | factor 
                 {
-                    logout<<"unary_expression : factor "<<endl;
                     $$ = new SymbolInfo($1->getName(), $1->getType());
                     $$->nodeName = "unary_expression : factor";
                     $$->isLeaf = false;
@@ -1110,7 +1010,6 @@ unary_expression : ADDOP unary_expression
 	
 factor	: variable 
                     {
-                        logout<<"factor : variable "<<endl;
                         $$ = new SymbolInfo($1->getName(), $1->getType());
                         $$->nodeName = "factor : variable";
                         $$->isLeaf = false;
@@ -1120,23 +1019,15 @@ factor	: variable
                     }
 	| ID LPAREN argument_list RPAREN
                                     {
-                                        logout<<"factor : ID LPAREN argument_list RPAREN "<<endl;
                                         SymbolInfo *fun = table->lookUp($1->getName());
                                         if(fun==NULL){
-                                            error<<"Line# "<<line_count<<": Undeclared function '"<<$1->getName()<<"'"<<endl;
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }
                                         else if(fun->getType()!="FUNCTION"){
-                                            error<<"Line# "<<line_count<<": '"<<$1->getName()<<"'' is not a function"<<endl;
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }
-                                        // else if(fun->isDef==false){
-                                        //     error<<"Line# "<<line_count<<": Undefined function '"<<$1->getName()<<"'"<<endl;
-                                        //     error_count++;
-                                        //     $$ = new SymbolInfo("", fun->getRetType());
-                                        // }
                                         else{
                                             checkArguments(fun, $3);
                                             $$ = new SymbolInfo("", fun->getRetType());
@@ -1152,7 +1043,6 @@ factor	: variable
                                     }
 	| LPAREN expression RPAREN
                                 {
-                                    logout<<"factor : LPAREN expression RPAREN "<<endl;
                                     $$ = new SymbolInfo($2->getName(), $2->getType());
                                     $$->nodeName = "factor : LPAREN expression RPAREN";
                                     $$->isLeaf = false;
@@ -1164,7 +1054,6 @@ factor	: variable
                                 }
 	| CONST_INT
                 {
-                    logout<<"factor : CONST_INT "<<endl;
                     $$ = new SymbolInfo($1->getName(), "INT");
                     $$->nodeName = "factor : CONST_INT";
                     $$->isLeaf = false;
@@ -1174,7 +1063,6 @@ factor	: variable
                 } 
 	| CONST_FLOAT
                 {
-                    logout<<"factor : CONST_FLOAT "<<endl;
                     $$ = new SymbolInfo($1->getName(), "FLOAT");
                     $$->nodeName = "factor : CONST_FLOAT";
                     $$->isLeaf = false;
@@ -1184,9 +1072,7 @@ factor	: variable
                 }
 	| variable INCOP 
                     {
-                        logout<<"factor : variable INCOP "<<endl;
                         if($1->getType()=="VOID"){
-                            error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                             error_count++;
                             $$ = new SymbolInfo("", "ERROR");
                         }
@@ -1202,9 +1088,7 @@ factor	: variable
                     }
  	| variable DECOP
                     {
-                        logout<<"factor : variable DECOP "<<endl;
                         if($1->getType()=="VOID"){
-                            error<<"Line# "<<line_count<<": Void cannot be used in expression"<<endl;
                             error_count++;
                             $$ = new SymbolInfo("", "ERROR");
                         }
@@ -1222,7 +1106,6 @@ factor	: variable
 	
 argument_list : arguments
                         {
-                            logout<<"argument_list : arguments "<<endl;
                             $$ = new Symbols();
                             $$->nodeName = "argument_list : arguments";
                             $$->isLeaf = false;
@@ -1235,7 +1118,6 @@ argument_list : arguments
                         }
 			  | 
               {
-                    logout<<"argument_list : "<<endl;
                     $$ = new Symbols();
                     $$->nodeName = "argument_list : ";
                     $$->isLeaf = false;
@@ -1246,7 +1128,6 @@ argument_list : arguments
 	
 arguments : arguments COMMA logic_expression
                                             {
-                                                logout<<"arguments : arguments COMMA logic_expression "<<endl;
                                                 $$ = new Symbols();
                                                 $$->nodeName = "arguments : arguments COMMA logic_expression";
                                                 $$->isLeaf = false;
@@ -1262,7 +1143,6 @@ arguments : arguments COMMA logic_expression
                                             }
 	      | logic_expression
                             {
-                                logout<<"arguments : logic_expression "<<endl;
                                 $$ = new Symbols();
                                 $$->nodeName = "arguments : logic_expression";
                                 $$->isLeaf = false;
@@ -1285,22 +1165,12 @@ int main(int argc,char *argv[])
 	}
 	
 	paras = NULL;
-
-	logout.open("log.txt");
-	error.open("error.txt");
-	tree.open("parsetree.txt");
 	
 	table = new SymbolTable(11);
 
 	yyin=fp;
 	yyparse();
 	
-	logout<<"Total Lines: "<<line_count<<endl;
-	logout<<"Total Errors: "<<error_count<<endl;
-
-	logout.close();
-	error.close();
-	tree.close();
 	delete table;
 	
 	return 0;
