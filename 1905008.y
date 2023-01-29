@@ -22,6 +22,7 @@ Symbols *paras;
 FILE *fp;
 string functionReturn;
 int error_line;
+SymbolInfo *inFunction;
 
 
 void yyerror(char *s)
@@ -162,6 +163,7 @@ void defineFunction(SymbolInfo *si, string ret, Symbols *par = NULL)
     SymbolInfo *fun = table->lookUpCurrent(si->getName());
     if(fun != NULL) {
         checkDefinition(fun, ret, par);
+        inFunction = fun;
         return;
     }
     fun = new SymbolInfo(si->getName(), "FUNCTION");
@@ -174,6 +176,71 @@ void defineFunction(SymbolInfo *si, string ret, Symbols *par = NULL)
     fun->isDef = true;
     table->insert(fun);
     paras = par;
+    inFunction = fun;
+}
+
+void funcCode()
+{
+    asmout<<inFunction->getName()<<" PROC"<<endl;
+    if(inFunction->getName() == "main"){
+        asmout<<"\tMOV AX, @DATA"<<endl;
+        asmout<<"\tMOV DS, AX"<<endl;
+    }
+}
+
+void codeForPrint()
+{
+    asmout<<"new_line PROC"<<endl;
+    asmout<<"\tPUSH AX"<<endl;
+    asmout<<"\tPUSH DX"<<endl;
+    asmout<<"\tMOV AH, 2"<<endl;
+    asmout<<"\tMOV DL, CR"<<endl;
+    asmout<<"\tINT 21H"<<endl;
+    asmout<<"\tMOV AH, 2"<<endl;
+    asmout<<"\tMOV DL, LF"<<endl;
+    asmout<<"\tINT 21H"<<endl;
+    asmout<<"\tPOP DX"<<endl;
+    asmout<<"\tPOP AX"<<endl;
+    asmout<<"\tRET"<<endl;
+    asmout<<"new_line ENDP"<<endl;
+    asmout<<"print_output PROC  ;print what is in ax"<<endl;
+    asmout<<"\tPUSH AX"<<endl;
+    asmout<<"\tPUSH BX"<<endl;
+    asmout<<"\tPUSH CX"<<endl;
+    asmout<<"\tPUSH DX"<<endl;
+    asmout<<"\tPUSH SI"<<endl;
+    asmout<<"\tLEA SI, number"<<endl;
+    asmout<<"\tMOV BX, 10"<<endl;
+    asmout<<"\tADD SI, 4"<<endl;
+    asmout<<"\tCMP AX, 0"<<endl;
+    asmout<<"\tJNGE negate"<<endl;
+    asmout<<"\tprint:"<<endl;
+    asmout<<"\tXOR DX, DX"<<endl;
+    asmout<<"\tDIV BX"<<endl;
+    asmout<<"\tMOV [SI], DL"<<endl;
+    asmout<<"\tADD [SI], '0'"<<endl;
+    asmout<<"\tDEC SI"<<endl;
+    asmout<<"\tCMP AX, 0"<<endl;
+    asmout<<"\tJNE print"<<endl;
+    asmout<<"\tINC SI"<<endl;
+    asmout<<"\tLEA DX, SI"<<endl;
+    asmout<<"\tMOV AH, 9"<<endl;
+    asmout<<"\tINT 21H"<<endl;
+    asmout<<"\tPOP SI"<<endl;
+    asmout<<"\tPOP DX"<<endl;
+    asmout<<"\tPOP CX"<<endl;
+    asmout<<"\tPOP BX"<<endl;
+    asmout<<"\tPOP AX"<<endl;
+    asmout<<"\tRET"<<endl;
+    asmout<<"\tnegate:"<<endl;
+    asmout<<"\tPUSH AX"<<endl;
+    asmout<<"\tMOV AH, 2"<<endl;
+    asmout<<"\tMOV DL, '-'"<<endl;
+    asmout<<"\tINT 21H"<<endl;
+    asmout<<"\tPOP AX"<<endl;
+    asmout<<"\tNEG AX"<<endl;
+    asmout<<"\tJMP print"<<endl;
+    asmout<<"print_output ENDP"<<endl;
 }
 
 void checkArguments(SymbolInfo *fun, Symbols* args)
@@ -305,7 +372,7 @@ func_declaration : type_specifier ID LPAREN parameter_list RPAREN SEMICOLON
                                                     }
 		;
 		 
-func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction($2, $1->getType(), $4);functionReturn=$1->getType();} compound_statement
+func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction($2, $1->getType(), $4);functionReturn=$1->getType();funcCode();} compound_statement
                                                                                     { 
                                                                                         $$ = new SymbolInfo("", "");
                                                                                         $$->nodeName = "func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement";
@@ -318,8 +385,13 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         $$->children.push_back($4);
                                                                                         $$->children.push_back($5); 
                                                                                         $$->children.push_back($7);
+                                                                                        if(inFunction->getName() == "main"){
+                                                                                            asmout<<"\tMOV AX, 4CH"<<endl;
+                                                                                            asmout<<"\tINT 21H"<<endl;
+                                                                                        }
+                                                                                        asmout<<inFunction->getName()<<" ENDP"<<endl;
                                                                                     }
-		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();} compound_statement
+		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();funcCode();} compound_statement
                                                             {
                                                                 $$ = new SymbolInfo("", "");
                                                                 $$->nodeName = "func_definition : type_specifier ID LPAREN RPAREN compound_statement";
@@ -331,6 +403,11 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 $$->children.push_back($3);
                                                                 $$->children.push_back($4);
                                                                 $$->children.push_back($6);
+                                                                if(inFunction->getName() == "main"){
+                                                                    asmout<<"\tMOV AX, 4CH"<<endl;
+                                                                    asmout<<"\tINT 21H"<<endl;
+                                                                }
+                                                                asmout<<inFunction->getName()<<" ENDP"<<endl;
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
                                                                     {
@@ -1177,11 +1254,19 @@ int main(int argc,char *argv[])
     asmout<<".MODEL SMALL"<<endl;
     asmout<<".STACK 100H"<<endl;
     asmout<<".DATA"<<endl;
+    asmout<<"\tCR EQU 0DH"<<endl;
+    asmout<<"\tLF EQU 0AH"<<endl;
+    asmout<<"\tnumber DB \"00000$\""<<endl;
     dataPosition = asmout.tellp();
     asmout<<".CODE"<<endl;
 
+    inFunction = NULL;
+
 	yyin=fp;
 	yyparse();
+
+    codeForPrint();
+    asmout<<"END main"<<endl;
 	
 	delete table;
 	fclose(fp);
