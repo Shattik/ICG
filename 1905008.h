@@ -24,6 +24,7 @@ public:
     vector<string> paramList;
     vector<string> paramType;
     bool isDef;
+    int width;
 
     SymbolInfo()
     {
@@ -88,6 +89,7 @@ private:
     int scopeID;
 
 public:
+    int offset;
 
     ScopeTable(int s)
     {
@@ -282,6 +284,12 @@ public:
         ScopeTable *now = new ScopeTable(bucketSize, scopeCount);
         now->setParent(current);
         current = now;
+        if(current->getParent() == NULL){
+            current->offset = 0;
+        }
+        else{
+            current->offset = current->getParent()->offset;
+        }
     }
 
     void exitScope()
@@ -359,6 +367,23 @@ public:
         while(now){
             now->print(fp);
             now = now->getParent();
+        }
+    }
+
+    bool isGlobal()
+    {
+        return current->getParent() == NULL;
+    }
+
+    int getOffset()
+    {
+        return current->offset;
+    }
+
+    void setOffset(int o)
+    {
+        if(current->getParent() != NULL){
+            current->offset = o;
         }
     }
 

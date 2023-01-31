@@ -15,8 +15,8 @@ extern FILE *yyin;
 extern int line_count;
 extern int error_count;
 
-ofstream asmout, optout;
-long dataPosition;
+ofstream asmout, optout, tempout;
+ifstream tempFile;
 SymbolTable *table;
 Symbols *paras;
 FILE *fp;
@@ -43,6 +43,7 @@ void idTypeSetter(string str, Symbols* si)
             SymbolInfo *inf = table->lookUpCurrent(sm.getName());
             if(inf == NULL) {
                 table->insert(sm.getName(), sm.getType(), str);
+                table->lookUpCurrent(sm.getName())->width = sm.width;
             }
             else{
                 if(inf->getType() != "ARRAY") {
@@ -61,6 +62,7 @@ void idTypeSetter(string str, Symbols* si)
             SymbolInfo *inf = table->lookUpCurrent(sm.getName());
             if(inf == NULL) {
                 table->insert(sm.getName(), str);
+                table->lookUpCurrent(sm.getName())->width = sm.width;
             }
             else{
                 if(inf->getType() == "ARRAY" || inf->getType() == "FUNCTION") {
@@ -181,10 +183,10 @@ void defineFunction(SymbolInfo *si, string ret, Symbols *par = NULL)
 
 void funcCode()
 {
-    asmout<<inFunction->getName()<<" PROC"<<endl;
+    tempout<<inFunction->getName()<<" PROC"<<endl;
     if(inFunction->getName() == "main"){
-        asmout<<"\tMOV AX, @DATA"<<endl;
-        asmout<<"\tMOV DS, AX"<<endl;
+        tempout<<"\tMOV AX, @DATA"<<endl;
+        tempout<<"\tMOV DS, AX"<<endl;
     }
 }
 
@@ -243,6 +245,14 @@ void codeForPrint()
     asmout<<"print_output ENDP"<<endl;
 }
 
+void copyTemp()
+{
+    string line;
+    while(getline(tempFile, line)){
+        asmout<<line<<endl;
+    }
+}
+
 void checkArguments(SymbolInfo *fun, Symbols* args)
 {
     if(fun->paramType.size() > args->length()){
@@ -256,6 +266,15 @@ void checkArguments(SymbolInfo *fun, Symbols* args)
             if(fun->paramType[i] != args->v[i].getType()){
                 error_count++;
             }
+        }
+    }
+}
+
+void pushVariables(Symbols* vars)
+{
+    if(table->isGlobal()){
+        for(int i=0; i<vars->length(); i++){
+            asmout<<"\t"<<vars->v[i].getName()<<" DW "<<vars->v[i].width<<" DUP (0000H)"<<endl;
         }
     }
 }
@@ -386,10 +405,11 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         $$->children.push_back($5); 
                                                                                         $$->children.push_back($7);
                                                                                         if(inFunction->getName() == "main"){
-                                                                                            asmout<<"\tMOV AX, 4CH"<<endl;
-                                                                                            asmout<<"\tINT 21H"<<endl;
+                                                                                            tempout<<"\tMOV AX, 4CH"<<endl;
+                                                                                            tempout<<"\tINT 21H"<<endl;
                                                                                         }
-                                                                                        asmout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                                        tempout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                                        inFunction = NULL;
                                                                                     }
 		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();funcCode();} compound_statement
                                                             {
@@ -404,10 +424,11 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 $$->children.push_back($4);
                                                                 $$->children.push_back($6);
                                                                 if(inFunction->getName() == "main"){
-                                                                    asmout<<"\tMOV AX, 4CH"<<endl;
-                                                                    asmout<<"\tINT 21H"<<endl;
+                                                                    tempout<<"\tMOV AX, 4CH"<<endl;
+                                                                    tempout<<"\tINT 21H"<<endl;
                                                                 }
-                                                                asmout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                tempout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                inFunction = NULL;
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
                                                                     {
@@ -523,6 +544,7 @@ compound_statement : LCURL {table->enterScope();addParameter();} statements RCUR
 var_declaration : type_specifier declaration_list SEMICOLON     
                                                                 {
                                                                     idTypeSetter($1->getType(), $2);
+                                                                    pushVariables($2);
                                                                     $$ = new SymbolInfo("", "");
                                                                     $$->nodeName = "var_declaration : type_specifier declaration_list SEMICOLON";
                                                                     $$->isLeaf = false;
@@ -586,6 +608,7 @@ declaration_list : declaration_list COMMA ID
                                                     for(int i=0; i<$1->length(); i++){
                                                         $$->insert($1->v[i]);
                                                     }
+                                                    $3->width = 1;
                                                     $$->insert(*$3);
                                                     $$->nodeName = "declaration_list : declaration_list COMMA ID";
                                                     $$->isLeaf = false;
@@ -602,6 +625,7 @@ declaration_list : declaration_list COMMA ID
                                                                             $$->insert($1->v[i]);
                                                                         }
                                                                         $3->setType("ARRAY");
+                                                                        $3->width = atoi($5->getName().c_str());
                                                                         $$->insert(*$3);
                                                                         $$->nodeName = "declaration_list : declaration_list COMMA ID LSQUARE CONST_INT RSQUARE";
                                                                         $$->isLeaf = false;
@@ -618,6 +642,7 @@ declaration_list : declaration_list COMMA ID
  		  | ID   
                 {
                     $$ = new Symbols();
+                    $1->width = 1;
                     $$->insert(*$1);
                     $$->nodeName = "declaration_list : ID";
                     $$->isLeaf = false;
@@ -629,6 +654,7 @@ declaration_list : declaration_list COMMA ID
                                             {
                                                 $$ = new Symbols();
                                                 $1->setType("ARRAY");
+                                                $1->width = atoi($3->getName().c_str());
                                                 $$->insert(*$1);
                                                 $$->nodeName = "declaration_list : ID LSQUARE CONST_INT RSQUARE";
                                                 $$->isLeaf = false;
@@ -1245,6 +1271,7 @@ int main(int argc,char *argv[])
 
     asmout.open("code.asm");
     optout.open("optimized_code.asm");
+    tempout.open("temporary.asm");
 	
 	paras = NULL;
 	
@@ -1257,21 +1284,24 @@ int main(int argc,char *argv[])
     asmout<<"\tCR EQU 0DH"<<endl;
     asmout<<"\tLF EQU 0AH"<<endl;
     asmout<<"\tnumber DB \"00000$\""<<endl;
-    dataPosition = asmout.tellp();
-    asmout<<".CODE"<<endl;
+    tempout<<".CODE"<<endl;
 
     inFunction = NULL;
 
 	yyin=fp;
 	yyparse();
 
+    tempFile.open("temporary.asm");
+    copyTemp();
     codeForPrint();
-    asmout<<"END main"<<endl;
+    asmout<<"END MAIN"<<endl;
 	
 	delete table;
 	fclose(fp);
     asmout.close();
     optout.close();
+    tempout.close();
+    tempFile.close();
 	return 0;
 }
 
