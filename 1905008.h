@@ -25,6 +25,9 @@ public:
     vector<string> paramType;
     bool isDef;
     int width;
+    int offset;
+    string asmType;
+    string address;
 
     SymbolInfo()
     {

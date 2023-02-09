@@ -43,7 +43,16 @@ void idTypeSetter(string str, Symbols* si)
             SymbolInfo *inf = table->lookUpCurrent(sm.getName());
             if(inf == NULL) {
                 table->insert(sm.getName(), sm.getType(), str);
-                table->lookUpCurrent(sm.getName())->width = sm.width;
+                inf = table->lookUpCurrent(sm.getName());
+                inf->width = sm.width;
+                inf->offset = table->getOffset()+2;
+                if(table->isGlobal()){
+                    inf->asmType = "global";
+                }
+                else{
+                    inf->asmType = "local";
+                }
+                table->setOffset(table->getOffset() + (inf->width)*2);
             }
             else{
                 if(inf->getType() != "ARRAY") {
@@ -62,7 +71,16 @@ void idTypeSetter(string str, Symbols* si)
             SymbolInfo *inf = table->lookUpCurrent(sm.getName());
             if(inf == NULL) {
                 table->insert(sm.getName(), str);
-                table->lookUpCurrent(sm.getName())->width = sm.width;
+                inf = table->lookUpCurrent(sm.getName());
+                inf->width = sm.width;
+                inf->offset = table->getOffset()+2;
+                if(table->isGlobal()){
+                    inf->asmType = "global";
+                }
+                else{
+                    inf->asmType = "local";
+                }
+                table->setOffset(table->getOffset() + (inf->width)*2);
             }
             else{
                 if(inf->getType() == "ARRAY" || inf->getType() == "FUNCTION") {
@@ -188,6 +206,8 @@ void funcCode()
         tempout<<"\tMOV AX, @DATA"<<endl;
         tempout<<"\tMOV DS, AX"<<endl;
     }
+    tempout<<"\tPUSH BP"<<endl;
+    tempout<<"\tMOV BP, SP"<<endl;
 }
 
 void codeForPrint()
@@ -863,6 +883,12 @@ variable : ID
                 $$->start = $1->start;
                 $$->end = $1->end;
                 $$->children.push_back($1);
+                if(sim->asmType=="global"){
+                    $$->address = $1->getName();
+                }
+                else if(sim->asmType=="local"){
+                    $$->address = "[BP-" + to_string(sim->offset) + "]";
+                }
             }
 	 | ID LSQUARE expression RSQUARE 
                                     {
@@ -1165,6 +1191,8 @@ factor	: variable
                     $$->start = $1->start;
                     $$->end = $1->end;
                     $$->children.push_back($1);
+                    tempout<<"\tMOV AX, "<<$1->getName()<<endl;
+                    $$->address = "AX";
                 } 
 	| CONST_FLOAT
                 {
