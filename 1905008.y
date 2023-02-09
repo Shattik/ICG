@@ -51,6 +51,7 @@ void idTypeSetter(string str, Symbols* si)
                 }
                 else{
                     inf->asmType = "local";
+                    tempout<<"\tSUB SP"<<", "<<inf->width*2<<endl;
                 }
                 table->setOffset(table->getOffset() + (inf->width)*2);
             }
@@ -79,6 +80,7 @@ void idTypeSetter(string str, Symbols* si)
                 }
                 else{
                     inf->asmType = "local";
+                    tempout<<"\tSUB SP"<<", "<<inf->width*2<<endl;
                 }
                 table->setOffset(table->getOffset() + (inf->width)*2);
             }
@@ -725,6 +727,7 @@ statement : var_declaration
                                 $$->start = $1->start;
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
+                                tempout<<"\tPOP AX"<<endl;
                             }
 	  | compound_statement
                             {
@@ -806,6 +809,15 @@ statement : var_declaration
                                                 $$->children.push_back($3);
                                                 $$->children.push_back($4);
                                                 $$->children.push_back($5);
+                                                SymbolInfo* temp = table->lookUp($3->getName());
+                                                if(temp->asmType == "global"){
+                                                    tempout<<"\tMOV AX, "<<temp->getName()<<endl;
+                                                }
+                                                else if(temp->asmType == "local"){
+                                                    tempout<<"\tMOV AX, [BP-"<<temp->offset<<"]"<<endl;
+                                                }
+                                                tempout<<"\tCALL print_output"<<endl;
+                                                tempout<<"\tCALL new_line"<<endl;
                                             }
 	  | RETURN expression SEMICOLON
                                     {
@@ -884,7 +896,7 @@ variable : ID
                 $$->end = $1->end;
                 $$->children.push_back($1);
                 if(sim->asmType=="global"){
-                    $$->address = $1->getName();
+                    $$->address = sim->getName();
                 }
                 else if(sim->asmType=="local"){
                     $$->address = "[BP-" + to_string(sim->offset) + "]";
@@ -916,6 +928,21 @@ variable : ID
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
                                         $$->children.push_back($4);
+                                        tempout<<"\tPOP AX"<<endl;
+                                        tempout<<"\tSHL AX, 1"<<endl;
+                                        if(sim->asmType=="global"){
+                                            tempout<<"\tLEA BX, "<<sim->getName()<<endl;
+                                            tempout<<"\tADD BX, AX"<<endl;
+                                            tempout<<"\tPUSH BX"<<endl;
+                                            $$->address = "stack";
+                                        }
+                                        else if(sim->asmType=="local"){
+                                            tempout<<"\tMOV BX, BP"<<endl;
+                                            tempout<<"\tSUB BX, "<<sim->offset<<endl;
+                                            tempout<<"\tSUB BX, AX"<<endl;
+                                            tempout<<"\tPUSH BX"<<endl;
+                                            $$->address = "stack";
+                                        }
                                     }
 	 ;
 	 
@@ -948,6 +975,17 @@ variable : ID
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
                                                 $$->children.push_back($3);
+                                                if($1->address=="stack"){
+                                                    tempout<<"\tPOP AX"<<endl;
+                                                    tempout<<"\tPOP BX"<<endl;
+                                                    tempout<<"\tMOV [BX], AX"<<endl;
+                                                    tempout<<"\tPUSH AX"<<endl;
+                                                }
+                                                else{
+                                                    tempout<<"\tPOP AX"<<endl;
+                                                    tempout<<"\tMOV "<<$1->address<<", AX"<<endl;
+                                                    tempout<<"\tPUSH AX"<<endl;
+                                                }
                                             }
 	   ;
 			
@@ -1147,6 +1185,14 @@ factor	: variable
                         $$->start = $1->start;
                         $$->end = $1->end;
                         $$->children.push_back($1); 
+                        if($1->address == "stack"){
+                            tempout<<"\tPOP BX"<<endl;
+                            tempout<<"\tMOV AX, [BX]"<<endl;
+                        }
+                        else{
+                            tempout<<"\tMOV AX, "<<$1->address<<endl;
+                        }
+                        tempout<<"\tPUSH AX"<<endl;
                     }
 	| ID LPAREN argument_list RPAREN
                                     {
@@ -1192,7 +1238,7 @@ factor	: variable
                     $$->end = $1->end;
                     $$->children.push_back($1);
                     tempout<<"\tMOV AX, "<<$1->getName()<<endl;
-                    $$->address = "AX";
+                    tempout<<"\tPUSH AX"<<endl;
                 } 
 	| CONST_FLOAT
                 {
