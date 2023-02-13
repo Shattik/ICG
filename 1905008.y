@@ -931,17 +931,17 @@ variable : ID
                                         tempout<<"\tPOP AX"<<endl;
                                         tempout<<"\tSHL AX, 1"<<endl;
                                         if(sim->asmType=="global"){
-                                            tempout<<"\tLEA BX, "<<sim->getName()<<endl;
+                                            tempout<<"\tPUSH AX"<<endl;
+                                            $$->address = "stack";
+                                            $$->setName(sim->getName());
+                                            $$->asmType = "global";
+                                        }
+                                        else if(sim->asmType=="local"){
+                                            tempout<<"\tMOV BX, "<<sim->offset<<endl;
                                             tempout<<"\tADD BX, AX"<<endl;
                                             tempout<<"\tPUSH BX"<<endl;
                                             $$->address = "stack";
-                                        }
-                                        else if(sim->asmType=="local"){
-                                            tempout<<"\tMOV BX, BP"<<endl;
-                                            tempout<<"\tSUB BX, "<<sim->offset<<endl;
-                                            tempout<<"\tSUB BX, AX"<<endl;
-                                            tempout<<"\tPUSH BX"<<endl;
-                                            $$->address = "stack";
+                                            $$->asmType = "local";
                                         }
                                     }
 	 ;
@@ -975,10 +975,17 @@ variable : ID
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
                                                 $$->children.push_back($3);
-                                                if($1->address=="stack"){
+                                                if($1->address == "stack" && $1->asmType == "global"){
                                                     tempout<<"\tPOP AX"<<endl;
                                                     tempout<<"\tPOP BX"<<endl;
-                                                    tempout<<"\tMOV [BX], AX"<<endl;
+                                                    tempout<<"\tLEA SI, "<<$1->getName()<<endl;
+                                                    tempout<<"\tMOV [SI + BX], AX"<<endl;
+                                                    tempout<<"\tPUSH AX"<<endl;
+                                                }
+                                                else if($1->address == "stack" && $1->asmType == "local"){
+                                                    tempout<<"\tPOP AX"<<endl;
+                                                    tempout<<"\tPOP SI"<<endl;
+                                                    tempout<<"\tMOV [BP - SI], AX"<<endl;
                                                     tempout<<"\tPUSH AX"<<endl;
                                                 }
                                                 else{
@@ -1079,6 +1086,15 @@ simple_expression : term
                                             $$->children.push_back($1);
                                             $$->children.push_back($2);
                                             $$->children.push_back($3);
+                                            tempout<<"\tPOP BX"<<endl;
+                                            tempout<<"\tPOP AX"<<endl;
+                                            if($2->getName() == "+"){
+                                                tempout<<"\tADD AX, BX"<<endl;
+                                            }
+                                            else{
+                                                tempout<<"\tSUB AX, BX"<<endl;
+                                            }
+                                            tempout<<"\tPUSH AX"<<endl;
                                         }
 		  ;
 					
@@ -1130,6 +1146,24 @@ term :	unary_expression
                                         $$->children.push_back($1);
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
+                                        tempout<<"\tPOP BX"<<endl;
+                                        if($2->getName() == "*"){
+                                            tempout<<"\tPOP AX"<<endl;
+                                            tempout<<"\tIMUL BX"<<endl;
+                                            tempout<<"\tPUSH AX"<<endl;
+                                        }
+                                        else if($2->getName() == "/"){
+                                            tempout<<"\tPOP AX"<<endl;
+                                            tempout<<"\tCWD"<<endl;
+                                            tempout<<"\tIDIV BX"<<endl;
+                                            tempout<<"\tPUSH AX"<<endl;
+                                        }
+                                        else if($2->getName() == "%"){
+                                            tempout<<"\tPOP AX"<<endl;
+                                            tempout<<"\tCWD"<<endl;
+                                            tempout<<"\tIDIV BX"<<endl;
+                                            tempout<<"\tPUSH DX"<<endl;
+                                        }
                                     }
      ;
 
@@ -1149,6 +1183,11 @@ unary_expression : ADDOP unary_expression
                                                 $$->end = $2->end;
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
+                                                if($1->getName() == "-"){
+                                                    tempout<<"\tPOP AX"<<endl;
+                                                    tempout<<"\tNEG AX"<<endl;
+                                                    tempout<<"\tPUSH AX"<<endl;
+                                                }
                                             }
 		 | NOT unary_expression 
                                 {
@@ -1185,9 +1224,14 @@ factor	: variable
                         $$->start = $1->start;
                         $$->end = $1->end;
                         $$->children.push_back($1); 
-                        if($1->address == "stack"){
+                        if($1->address == "stack" && $1->asmType == "global"){
                             tempout<<"\tPOP BX"<<endl;
-                            tempout<<"\tMOV AX, [BX]"<<endl;
+                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
+                            tempout<<"\tMOV AX, [SI + BX]"<<endl;
+                        }
+                        else if($1->address == "stack" && $1->asmType == "local"){
+                            tempout<<"\tPOP SI"<<endl;
+                            tempout<<"\tMOV AX, [BP - SI]"<<endl;
                         }
                         else{
                             tempout<<"\tMOV AX, "<<$1->address<<endl;
@@ -1264,6 +1308,21 @@ factor	: variable
                         $$->end = $2->end;
                         $$->children.push_back($1);
                         $$->children.push_back($2);
+                        if($1->address == "stack" && $1->asmType == "global"){
+                            tempout<<"\tPOP BX"<<endl;
+                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
+                            tempout<<"\tPUSH [SI + BX]"<<endl;
+                            tempout<<"\tINC [SI + BX]"<<endl;
+                        }
+                        else if($1->address == "stack" && $1->asmType == "local"){
+                            tempout<<"\tPOP SI"<<endl;
+                            tempout<<"\tPUSH [BP - SI]"<<endl;
+                            tempout<<"\tINC [BP - SI]"<<endl;
+                        }
+                        else{
+                            tempout<<"\tPUSH "<<$1->address<<endl;
+                            tempout<<"\tINC "<<$1->address<<endl;
+                        }
                     }
  	| variable DECOP
                     {
@@ -1280,6 +1339,21 @@ factor	: variable
                         $$->end = $2->end;
                         $$->children.push_back($1);
                         $$->children.push_back($2);
+                        if($1->address == "stack" && $1->asmType == "global"){
+                            tempout<<"\tPOP BX"<<endl;
+                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
+                            tempout<<"\tPUSH [SI + BX]"<<endl;
+                            tempout<<"\tDEC [SI + BX]"<<endl;
+                        }
+                        else if($1->address == "stack" && $1->asmType == "local"){
+                            tempout<<"\tPOP SI"<<endl;
+                            tempout<<"\tPUSH [BP - SI]"<<endl;
+                            tempout<<"\tDEC [BP - SI]"<<endl;
+                        }
+                        else{
+                            tempout<<"\tPUSH "<<$1->address<<endl;
+                            tempout<<"\tDEC "<<$1->address<<endl;
+                        }
                     }
 	;
 	
