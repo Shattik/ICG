@@ -28,6 +28,11 @@ public:
     int offset;
     string asmType;
     string address;
+    vector<int> trueList;
+    vector<int> falseList;
+    vector<int> nextList;
+    string exType;
+    string label;
 
     SymbolInfo()
     {

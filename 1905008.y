@@ -4,6 +4,7 @@
 #include<cstdlib>
 #include<cstring>
 #include<cmath>
+#include<map>
 #include "1905008.h"
 // #define YYSTYPE SymbolInfo*
 
@@ -23,12 +24,20 @@ FILE *fp;
 string functionReturn;
 int error_line;
 SymbolInfo *inFunction;
-
+int tempLine;
+map<int, string> labelMap;
+int labelCount;
 
 void yyerror(char *s)
 {
     error_line = line_count;
 	//write your code
+}
+
+void printToTemp(string s)
+{
+    tempout<<s<<endl;
+    tempLine++;
 }
 
 void idTypeSetter(string str, Symbols* si)
@@ -51,7 +60,7 @@ void idTypeSetter(string str, Symbols* si)
                 }
                 else{
                     inf->asmType = "local";
-                    tempout<<"\tSUB SP"<<", "<<inf->width*2<<endl;
+                    printToTemp((string)"\tSUB SP"+", "+to_string(inf->width*2));
                 }
                 table->setOffset(table->getOffset() + (inf->width)*2);
             }
@@ -80,7 +89,7 @@ void idTypeSetter(string str, Symbols* si)
                 }
                 else{
                     inf->asmType = "local";
-                    tempout<<"\tSUB SP"<<", "<<inf->width*2<<endl;
+                    printToTemp((string)"\tSUB SP"+", "+to_string(inf->width*2));
                 }
                 table->setOffset(table->getOffset() + (inf->width)*2);
             }
@@ -203,13 +212,13 @@ void defineFunction(SymbolInfo *si, string ret, Symbols *par = NULL)
 
 void funcCode()
 {
-    tempout<<inFunction->getName()<<" PROC"<<endl;
+    printToTemp(inFunction->getName()+" PROC");
     if(inFunction->getName() == "main"){
-        tempout<<"\tMOV AX, @DATA"<<endl;
-        tempout<<"\tMOV DS, AX"<<endl;
+        printToTemp("\tMOV AX, @DATA");
+        printToTemp("\tMOV DS, AX");
     }
-    tempout<<"\tPUSH BP"<<endl;
-    tempout<<"\tMOV BP, SP"<<endl;
+    printToTemp("\tPUSH BP");
+    printToTemp("\tMOV BP, SP");
 }
 
 void codeForPrint()
@@ -270,8 +279,14 @@ void codeForPrint()
 void copyTemp()
 {
     string line;
+    int i=1;
     while(getline(tempFile, line)){
+        if(labelMap.find(i) != labelMap.end()){
+            int size = line.size();
+            line = line.substr(0, size-1) + " " + labelMap[i];
+        }
         asmout<<line<<endl;
+        i++;
     }
 }
 
@@ -301,6 +316,40 @@ void pushVariables(Symbols* vars)
     }
 }
 
+string giveLabel(){
+    string s = "L" + to_string(labelCount);
+    labelCount++;
+    return s;
+}
+
+void backPatch(vector<int> vec, string label)
+{
+    for(int i=0; i<vec.size(); i++){
+        labelMap[vec[i]] = label;
+    }
+}
+
+vector<int> merge(vector<int> v1, vector<int> v2)
+{
+    vector<int> v;
+    for(int i=0; i<v1.size(); i++){
+        v.push_back(v1[i]);
+    }
+    for(int i=0; i<v2.size(); i++){
+        v.push_back(v2[i]);
+    }
+    return v;
+}
+
+void singleRel(SymbolInfo *si){
+    printToTemp("\tPOP AX");
+    printToTemp("\tCMP AX, 0");
+    printToTemp("\tJNE ");
+    si->trueList.push_back(tempLine);
+    printToTemp("\tJMP ");
+    si->falseList.push_back(tempLine);
+}
+
 %}
 
 %union{
@@ -311,7 +360,7 @@ void pushVariables(Symbols* vars)
 %token<si> CONST_INT CONST_FLOAT CONST_CHAR ADDOP MULOP INCOP RELOP LOGICOP BITOP ID SINGLE_LINE_STRING MULTI_LINE_STRING IF ELSE FOR WHILE DO BREAK INT CHAR FLOAT DOUBLE VOID RETURN SWITCH CASE DEFAULT CONTINUE ASSIGNOP NOT LPAREN RPAREN LCURL RCURL LSQUARE RSQUARE COMMA SEMICOLON DECOP PRINTLN
   
 %type<smbls> declaration_list parameter_list arguments argument_list
-%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start
+%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start M
 
 // %left 
 // %right
@@ -427,10 +476,10 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         $$->children.push_back($5); 
                                                                                         $$->children.push_back($7);
                                                                                         if(inFunction->getName() == "main"){
-                                                                                            tempout<<"\tMOV AX, 4CH"<<endl;
-                                                                                            tempout<<"\tINT 21H"<<endl;
+                                                                                            printToTemp("\tMOV AX, 4CH");
+                                                                                            printToTemp("\tINT 21H");
                                                                                         }
-                                                                                        tempout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                                        printToTemp(inFunction->getName()+" ENDP");
                                                                                         inFunction = NULL;
                                                                                     }
 		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();funcCode();} compound_statement
@@ -446,10 +495,10 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 $$->children.push_back($4);
                                                                 $$->children.push_back($6);
                                                                 if(inFunction->getName() == "main"){
-                                                                    tempout<<"\tMOV AX, 4CH"<<endl;
-                                                                    tempout<<"\tINT 21H"<<endl;
+                                                                    printToTemp("\tMOV AX, 4CH");
+                                                                    printToTemp("\tINT 21H");
                                                                 }
-                                                                tempout<<inFunction->getName()<<" ENDP"<<endl;
+                                                                printToTemp(inFunction->getName()+" ENDP");
                                                                 inFunction = NULL;
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
@@ -727,7 +776,7 @@ statement : var_declaration
                                 $$->start = $1->start;
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
-                                tempout<<"\tPOP AX"<<endl;
+                                printToTemp("\tPOP AX");
                             }
 	  | compound_statement
                             {
@@ -811,13 +860,13 @@ statement : var_declaration
                                                 $$->children.push_back($5);
                                                 SymbolInfo* temp = table->lookUp($3->getName());
                                                 if(temp->asmType == "global"){
-                                                    tempout<<"\tMOV AX, "<<temp->getName()<<endl;
+                                                    printToTemp("\tMOV AX, "+temp->getName());
                                                 }
                                                 else if(temp->asmType == "local"){
-                                                    tempout<<"\tMOV AX, [BP-"<<temp->offset<<"]"<<endl;
+                                                    printToTemp((string)"\tMOV AX, [BP-"+to_string(temp->offset)+"]");
                                                 }
-                                                tempout<<"\tCALL print_output"<<endl;
-                                                tempout<<"\tCALL new_line"<<endl;
+                                                printToTemp("\tCALL print_output");
+                                                printToTemp("\tCALL new_line");
                                             }
 	  | RETURN expression SEMICOLON
                                     {
@@ -928,18 +977,18 @@ variable : ID
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
                                         $$->children.push_back($4);
-                                        tempout<<"\tPOP AX"<<endl;
-                                        tempout<<"\tSHL AX, 1"<<endl;
+                                        printToTemp("\tPOP AX");
+                                        printToTemp("\tSHL AX, 1");
                                         if(sim->asmType=="global"){
-                                            tempout<<"\tPUSH AX"<<endl;
+                                            printToTemp("\tPUSH AX");
                                             $$->address = "stack";
                                             $$->setName(sim->getName());
                                             $$->asmType = "global";
                                         }
                                         else if(sim->asmType=="local"){
-                                            tempout<<"\tMOV BX, "<<sim->offset<<endl;
-                                            tempout<<"\tADD BX, AX"<<endl;
-                                            tempout<<"\tPUSH BX"<<endl;
+                                            printToTemp("\tMOV BX, "+to_string(sim->offset));
+                                            printToTemp("\tADD BX, AX");
+                                            printToTemp("\tPUSH BX");
                                             $$->address = "stack";
                                             $$->asmType = "local";
                                         }
@@ -954,6 +1003,8 @@ variable : ID
                                     $$->start = $1->start;
                                     $$->end = $1->end;
                                     $$->children.push_back($1);
+                                    $$->trueList = $1->trueList;
+                                    $$->falseList = $1->falseList;
                                 }
 	   | variable ASSIGNOP logic_expression 	
                                             {
@@ -975,23 +1026,37 @@ variable : ID
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
                                                 $$->children.push_back($3);
+                                                if($3->exType != "srel"){
+                                                    string l = giveLabel();
+                                                    printToTemp(l+":");
+                                                    backPatch($3->trueList, l);
+                                                    printToTemp("\tMOV AX, 1");
+                                                    string l2 = giveLabel();
+                                                    string l3 = giveLabel();
+                                                    printToTemp("\tJMP "+l2);
+                                                    printToTemp(l3+":");
+                                                    backPatch($3->falseList, l3);
+                                                    printToTemp("\tMOV AX, 0");
+                                                    printToTemp(l2+":");
+                                                    printToTemp("\tPUSH AX");
+                                                }
                                                 if($1->address == "stack" && $1->asmType == "global"){
-                                                    tempout<<"\tPOP AX"<<endl;
-                                                    tempout<<"\tPOP BX"<<endl;
-                                                    tempout<<"\tLEA SI, "<<$1->getName()<<endl;
-                                                    tempout<<"\tMOV [SI + BX], AX"<<endl;
-                                                    tempout<<"\tPUSH AX"<<endl;
+                                                    printToTemp("\tPOP AX");
+                                                    printToTemp("\tPOP BX");
+                                                    printToTemp("\tLEA SI, "+$1->getName());
+                                                    printToTemp("\tMOV [SI + BX], AX");
+                                                    printToTemp("\tPUSH AX");
                                                 }
                                                 else if($1->address == "stack" && $1->asmType == "local"){
-                                                    tempout<<"\tPOP AX"<<endl;
-                                                    tempout<<"\tPOP SI"<<endl;
-                                                    tempout<<"\tMOV [BP - SI], AX"<<endl;
-                                                    tempout<<"\tPUSH AX"<<endl;
+                                                    printToTemp("\tPOP AX");
+                                                    printToTemp("\tPOP SI");
+                                                    printToTemp("\tMOV [BP - SI], AX");
+                                                    printToTemp("\tPUSH AX");
                                                 }
                                                 else{
-                                                    tempout<<"\tPOP AX"<<endl;
-                                                    tempout<<"\tMOV "<<$1->address<<", AX"<<endl;
-                                                    tempout<<"\tPUSH AX"<<endl;
+                                                    printToTemp("\tPOP AX");
+                                                    printToTemp("\tMOV "+$1->address+", AX");
+                                                    printToTemp("\tPUSH AX");
                                                 }
                                             }
 	   ;
@@ -1004,10 +1069,13 @@ logic_expression : rel_expression
                                     $$->start = $1->start;
                                     $$->end = $1->end;
                                     $$->children.push_back($1);
+                                    $$->trueList = $1->trueList;
+                                    $$->falseList = $1->falseList;
+                                    $$->exType = $1->exType;
                                 }
-		 | rel_expression LOGICOP rel_expression 
+		 | rel_expression {if($1->exType=="srel"){singleRel($1);}} LOGICOP M rel_expression 
                                                 {
-                                                    if($1->getType()=="VOID" || $3->getType()=="VOID"){
+                                                    if($1->getType()=="VOID" || $5->getType()=="VOID"){
                                                         error_count++;
                                                         $$ = new SymbolInfo("", "ERROR");
                                                     }
@@ -1017,10 +1085,24 @@ logic_expression : rel_expression
                                                     $$->nodeName = "logic_expression : rel_expression LOGICOP rel_expression";
                                                     $$->isLeaf = false;
                                                     $$->start = $1->start;
-                                                    $$->end = $3->end;
+                                                    $$->end = $5->end;
                                                     $$->children.push_back($1);
-                                                    $$->children.push_back($2);
                                                     $$->children.push_back($3);
+                                                    $$->children.push_back($5);
+                                                    if($5->exType=="srel"){
+                                                        singleRel($5);
+                                                    }
+                                                    if($3->getName()=="&&"){
+                                                        backPatch($1->trueList, $4->label);
+                                                        $$->trueList = $5->trueList;
+                                                        $$->falseList = merge($1->falseList, $5->falseList);
+                                                    }
+                                                    else if($3->getName()=="||"){
+                                                        backPatch($1->falseList, $4->label);
+                                                        $$->trueList = merge($1->trueList, $5->trueList);
+                                                        $$->falseList = $5->falseList;
+                                                    }
+                                                    $$->exType = "log";
                                                 }	
 		 ;
 			
@@ -1032,6 +1114,7 @@ rel_expression	: simple_expression
                                         $$->start = $1->start;
                                         $$->end = $1->end;
                                         $$->children.push_back($1);
+                                        $$->exType = "srel";
                                     }
 		| simple_expression RELOP simple_expression	
                                                     {
@@ -1049,6 +1132,33 @@ rel_expression	: simple_expression
                                                         $$->children.push_back($1);
                                                         $$->children.push_back($2);
                                                         $$->children.push_back($3);
+                                                        string rel;
+                                                        if($2->getName()=="<="){
+                                                            rel = "JLE";
+                                                        }
+                                                        else if($2->getName()=="<"){
+                                                            rel = "JL";
+                                                        }
+                                                        else if($2->getName()==">="){
+                                                            rel = "JGE";
+                                                        }
+                                                        else if($2->getName()==">"){
+                                                            rel = "JG";
+                                                        }
+                                                        else if($2->getName()=="=="){
+                                                            rel = "JE";
+                                                        }
+                                                        else if($2->getName()=="!="){
+                                                            rel = "JNE";
+                                                        }
+                                                        printToTemp("\tPOP BX");
+                                                        printToTemp("\tPOP AX");
+                                                        printToTemp("\tCMP AX, BX");
+                                                        printToTemp("\t"+rel+" ");
+                                                        $$->trueList.push_back(tempLine);
+                                                        printToTemp("\tJMP ");
+                                                        $$->falseList.push_back(tempLine);
+                                                        $$->exType = "rel";
                                                     }
 		;
 				
@@ -1086,15 +1196,15 @@ simple_expression : term
                                             $$->children.push_back($1);
                                             $$->children.push_back($2);
                                             $$->children.push_back($3);
-                                            tempout<<"\tPOP BX"<<endl;
-                                            tempout<<"\tPOP AX"<<endl;
+                                            printToTemp("\tPOP BX");
+                                            printToTemp("\tPOP AX");
                                             if($2->getName() == "+"){
-                                                tempout<<"\tADD AX, BX"<<endl;
+                                                printToTemp("\tADD AX, BX");
                                             }
                                             else{
-                                                tempout<<"\tSUB AX, BX"<<endl;
+                                                printToTemp("\tSUB AX, BX");
                                             }
-                                            tempout<<"\tPUSH AX"<<endl;
+                                            printToTemp("\tPUSH AX");
                                         }
 		  ;
 					
@@ -1146,23 +1256,23 @@ term :	unary_expression
                                         $$->children.push_back($1);
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
-                                        tempout<<"\tPOP BX"<<endl;
+                                        printToTemp("\tPOP BX");
                                         if($2->getName() == "*"){
-                                            tempout<<"\tPOP AX"<<endl;
-                                            tempout<<"\tIMUL BX"<<endl;
-                                            tempout<<"\tPUSH AX"<<endl;
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tIMUL BX");
+                                            printToTemp("\tPUSH AX");
                                         }
                                         else if($2->getName() == "/"){
-                                            tempout<<"\tPOP AX"<<endl;
-                                            tempout<<"\tCWD"<<endl;
-                                            tempout<<"\tIDIV BX"<<endl;
-                                            tempout<<"\tPUSH AX"<<endl;
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tCWD");
+                                            printToTemp("\tIDIV BX");
+                                            printToTemp("\tPUSH AX");
                                         }
                                         else if($2->getName() == "%"){
-                                            tempout<<"\tPOP AX"<<endl;
-                                            tempout<<"\tCWD"<<endl;
-                                            tempout<<"\tIDIV BX"<<endl;
-                                            tempout<<"\tPUSH DX"<<endl;
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tCWD");
+                                            printToTemp("\tIDIV BX");
+                                            printToTemp("\tPUSH DX");
                                         }
                                     }
      ;
@@ -1184,9 +1294,9 @@ unary_expression : ADDOP unary_expression
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
                                                 if($1->getName() == "-"){
-                                                    tempout<<"\tPOP AX"<<endl;
-                                                    tempout<<"\tNEG AX"<<endl;
-                                                    tempout<<"\tPUSH AX"<<endl;
+                                                    printToTemp("\tPOP AX");
+                                                    printToTemp("\tNEG AX");
+                                                    printToTemp("\tPUSH AX");
                                                 }
                                             }
 		 | NOT unary_expression 
@@ -1204,6 +1314,8 @@ unary_expression : ADDOP unary_expression
                                     $$->end = $2->end;
                                     $$->children.push_back($1);
                                     $$->children.push_back($2);
+                                    $$->trueList = $2->falseList;
+                                    $$->falseList = $2->trueList;
                                 }
 		 | factor 
                 {
@@ -1225,18 +1337,18 @@ factor	: variable
                         $$->end = $1->end;
                         $$->children.push_back($1); 
                         if($1->address == "stack" && $1->asmType == "global"){
-                            tempout<<"\tPOP BX"<<endl;
-                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
-                            tempout<<"\tMOV AX, [SI + BX]"<<endl;
+                            printToTemp("\tPOP BX");
+                            printToTemp("\tLEA SI, "+$1->getName());
+                            printToTemp("\tMOV AX, [SI + BX]");
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
-                            tempout<<"\tPOP SI"<<endl;
-                            tempout<<"\tMOV AX, [BP - SI]"<<endl;
+                            printToTemp("\tPOP SI");
+                            printToTemp("\tMOV AX, [BP - SI]");
                         }
                         else{
-                            tempout<<"\tMOV AX, "<<$1->address<<endl;
+                            printToTemp("\tMOV AX, "+$1->address);
                         }
-                        tempout<<"\tPUSH AX"<<endl;
+                        printToTemp("\tPUSH AX");
                     }
 	| ID LPAREN argument_list RPAREN
                                     {
@@ -1281,8 +1393,8 @@ factor	: variable
                     $$->start = $1->start;
                     $$->end = $1->end;
                     $$->children.push_back($1);
-                    tempout<<"\tMOV AX, "<<$1->getName()<<endl;
-                    tempout<<"\tPUSH AX"<<endl;
+                    printToTemp("\tMOV AX, "+$1->getName());
+                    printToTemp("\tPUSH AX");
                 } 
 	| CONST_FLOAT
                 {
@@ -1309,19 +1421,19 @@ factor	: variable
                         $$->children.push_back($1);
                         $$->children.push_back($2);
                         if($1->address == "stack" && $1->asmType == "global"){
-                            tempout<<"\tPOP BX"<<endl;
-                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
-                            tempout<<"\tPUSH [SI + BX]"<<endl;
-                            tempout<<"\tINC [SI + BX]"<<endl;
+                            printToTemp("\tPOP BX");
+                            printToTemp("\tLEA SI, "+$1->getName());
+                            printToTemp("\tPUSH [SI + BX]");
+                            printToTemp("\tINC [SI + BX]");
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
-                            tempout<<"\tPOP SI"<<endl;
-                            tempout<<"\tPUSH [BP - SI]"<<endl;
-                            tempout<<"\tINC [BP - SI]"<<endl;
+                            printToTemp("\tPOP SI");
+                            printToTemp("\tPUSH [BP - SI]");
+                            printToTemp("\tINC [BP - SI]");
                         }
                         else{
-                            tempout<<"\tPUSH "<<$1->address<<endl;
-                            tempout<<"\tINC "<<$1->address<<endl;
+                            printToTemp("\tPUSH "+$1->address);
+                            printToTemp("\tINC "+$1->address);
                         }
                     }
  	| variable DECOP
@@ -1340,19 +1452,19 @@ factor	: variable
                         $$->children.push_back($1);
                         $$->children.push_back($2);
                         if($1->address == "stack" && $1->asmType == "global"){
-                            tempout<<"\tPOP BX"<<endl;
-                            tempout<<"\tLEA SI, "<<$1->getName()<<endl;
-                            tempout<<"\tPUSH [SI + BX]"<<endl;
-                            tempout<<"\tDEC [SI + BX]"<<endl;
+                            printToTemp("\tPOP BX");
+                            printToTemp("\tLEA SI, "+$1->getName());
+                            printToTemp("\tPUSH [SI + BX]");
+                            printToTemp("\tDEC [SI + BX]");
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
-                            tempout<<"\tPOP SI"<<endl;
-                            tempout<<"\tPUSH [BP - SI]"<<endl;
-                            tempout<<"\tDEC [BP - SI]"<<endl;
+                            printToTemp("\tPOP SI");
+                            printToTemp("\tPUSH [BP - SI]");
+                            printToTemp("\tDEC [BP - SI]");
                         }
                         else{
-                            tempout<<"\tPUSH "<<$1->address<<endl;
-                            tempout<<"\tDEC "<<$1->address<<endl;
+                            printToTemp("\tPUSH "+$1->address);
+                            printToTemp("\tDEC "+$1->address);
                         }
                     }
 	;
@@ -1405,6 +1517,11 @@ arguments : arguments COMMA logic_expression
                                 $$->insert(*$1);
                             }
 	      ;
+
+M : {
+    $$->label = giveLabel();
+    printToTemp($$->label+":");
+}          
  
 
 %%
@@ -1422,17 +1539,19 @@ int main(int argc,char *argv[])
     tempout.open("temporary.asm");
 	
 	paras = NULL;
+    tempLine = 0;
+    labelCount = 0;
 	
 	table = new SymbolTable(11);
 
     //initializing the asm file
     asmout<<".MODEL SMALL"<<endl;
-    asmout<<".STACK 100H"<<endl;
+    asmout<<".STACK 1000H"<<endl;
     asmout<<".DATA"<<endl;
     asmout<<"\tCR EQU 0DH"<<endl;
     asmout<<"\tLF EQU 0AH"<<endl;
     asmout<<"\tnumber DB \"00000$\""<<endl;
-    tempout<<".CODE"<<endl;
+    printToTemp(".CODE");
 
     inFunction = NULL;
 
@@ -1443,6 +1562,7 @@ int main(int argc,char *argv[])
     copyTemp();
     codeForPrint();
     asmout<<"END MAIN"<<endl;
+    cout<<tempLine<<endl;
 	
 	delete table;
 	fclose(fp);
