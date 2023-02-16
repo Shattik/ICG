@@ -27,6 +27,7 @@ SymbolInfo *inFunction;
 int tempLine;
 map<int, string> labelMap;
 int labelCount;
+SymbolInfo *isLogic;
 
 void yyerror(char *s)
 {
@@ -360,7 +361,7 @@ void singleRel(SymbolInfo *si){
 %token<si> CONST_INT CONST_FLOAT CONST_CHAR ADDOP MULOP INCOP RELOP LOGICOP BITOP ID SINGLE_LINE_STRING MULTI_LINE_STRING IF ELSE FOR WHILE DO BREAK INT CHAR FLOAT DOUBLE VOID RETURN SWITCH CASE DEFAULT CONTINUE ASSIGNOP NOT LPAREN RPAREN LCURL RCURL LSQUARE RSQUARE COMMA SEMICOLON DECOP PRINTLN
   
 %type<smbls> declaration_list parameter_list arguments argument_list
-%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start M
+%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start M not_bool
 
 // %left 
 // %right
@@ -746,16 +747,21 @@ statements : statement
                             $$->start = $1->start;
                             $$->end = $1->end;
                             $$->children.push_back($1);
+                            $$->trueList = $1->trueList;
+                            $$->falseList = $1->falseList;
+                            $$->nextList = $1->nextList;
                         }
-	   | statements statement
+	   | statements M statement
                         {
                             $$ = new SymbolInfo("", "");
                             $$->nodeName = "statements : statements statement";
                             $$->isLeaf = false;
                             $$->start = $1->start;
-                            $$->end = $2->end;
+                            $$->end = $3->end;
                             $$->children.push_back($1);
-                            $$->children.push_back($2);
+                            $$->children.push_back($3);
+                            backPatch($1->nextList, $2->label);
+                            $$->nextList = $3->nextList;
                         }
 	   ;
 	   
@@ -802,33 +808,35 @@ statement : var_declaration
                                                                                             $$->children.push_back($6);
                                                                                             $$->children.push_back($7);
                                                                                         }
-	  | IF LPAREN expression RPAREN statement  %prec LOWER_THAN_ELSE 
+	  | IF LPAREN expression RPAREN not_bool M statement  %prec LOWER_THAN_ELSE 
                                                                     {
                                                                         $$ = new SymbolInfo("", "");
                                                                         $$->nodeName = "statement : IF LPAREN expression RPAREN statement";
                                                                         $$->isLeaf = false;
                                                                         $$->start = $1->start;
-                                                                        $$->end = $5->end;
+                                                                        $$->end = $7->end;
                                                                         $$->children.push_back($1);
                                                                         $$->children.push_back($2);
                                                                         $$->children.push_back($3);
                                                                         $$->children.push_back($4);
-                                                                        $$->children.push_back($5);
+                                                                        $$->children.push_back($7);
+                                                                        backPatch($3->trueList, $6->label);
+                                                                        $$->nextList = merge($3->falseList, $7->nextList);
                                                                     }
-	  | IF LPAREN expression RPAREN statement ELSE statement
+	  | IF LPAREN expression RPAREN not_bool M statement ELSE statement
                                                             {
                                                                 $$ = new SymbolInfo("", "");
                                                                 $$->nodeName = "statement : IF LPAREN expression RPAREN statement ELSE statement";
                                                                 $$->isLeaf = false;
                                                                 $$->start = $1->start;
-                                                                $$->end = $7->end;
+                                                                $$->end = $9->end;
                                                                 $$->children.push_back($1);
                                                                 $$->children.push_back($2);
                                                                 $$->children.push_back($3);
                                                                 $$->children.push_back($4);
-                                                                $$->children.push_back($5);
-                                                                $$->children.push_back($6);
                                                                 $$->children.push_back($7);
+                                                                $$->children.push_back($8);
+                                                                $$->children.push_back($9);
                                                             }
 	  | WHILE LPAREN expression RPAREN statement
                                                 {
@@ -905,6 +913,10 @@ expression_statement 	: SEMICOLON
                                         $$->end = $2->end;
                                         $$->children.push_back($1);
                                         $$->children.push_back($2);
+                                        $$->trueList = $1->trueList;
+                                        $$->falseList = $1->falseList;
+                                        $$->nextList = $1->nextList;
+                                        $$->exType = $1->exType;
                                     } 
             | error SEMICOLON 
                                 {
@@ -1005,6 +1017,9 @@ variable : ID
                                     $$->children.push_back($1);
                                     $$->trueList = $1->trueList;
                                     $$->falseList = $1->falseList;
+                                    $$->nextList = $1->nextList;
+                                    $$->exType = $1->exType;
+                                    isLogic = $$;
                                 }
 	   | variable ASSIGNOP logic_expression 	
                                             {
@@ -1058,6 +1073,7 @@ variable : ID
                                                     printToTemp("\tMOV "+$1->address+", AX");
                                                     printToTemp("\tPUSH AX");
                                                 }
+                                                isLogic = $$;
                                             }
 	   ;
 			
@@ -1071,6 +1087,7 @@ logic_expression : rel_expression
                                     $$->children.push_back($1);
                                     $$->trueList = $1->trueList;
                                     $$->falseList = $1->falseList;
+                                    $$->nextList = $1->nextList;
                                     $$->exType = $1->exType;
                                 }
 		 | rel_expression {if($1->exType=="srel"){singleRel($1);}} LOGICOP M rel_expression 
@@ -1114,7 +1131,15 @@ rel_expression	: simple_expression
                                         $$->start = $1->start;
                                         $$->end = $1->end;
                                         $$->children.push_back($1);
-                                        $$->exType = "srel";
+                                        if($1->exType != "log"){
+                                            $$->exType = "srel";
+                                        }
+                                        else{
+                                            $$->exType = $1->exType;
+                                        }
+                                        $$->trueList = $1->trueList;
+                                        $$->falseList = $1->falseList;
+                                        $$->nextList = $1->nextList;
                                     }
 		| simple_expression RELOP simple_expression	
                                                     {
@@ -1170,6 +1195,10 @@ simple_expression : term
                             $$->start = $1->start;
                             $$->end = $1->end;
                             $$->children.push_back($1);
+                            $$->trueList = $1->trueList;
+                            $$->falseList = $1->falseList;
+                            $$->nextList = $1->nextList;
+                            $$->exType = $1->exType;
                         }
 		  | simple_expression ADDOP term 
                                         {
@@ -1216,6 +1245,10 @@ term :	unary_expression
                             $$->start = $1->start;
                             $$->end = $1->end;
                             $$->children.push_back($1);
+                            $$->trueList = $1->trueList;
+                            $$->falseList = $1->falseList;
+                            $$->nextList = $1->nextList;
+                            $$->exType = $1->exType;
                         }
      |  term MULOP unary_expression
                                     {
@@ -1314,8 +1347,12 @@ unary_expression : ADDOP unary_expression
                                     $$->end = $2->end;
                                     $$->children.push_back($1);
                                     $$->children.push_back($2);
+                                    if($2->exType != "rel" && $2->exType != "log"){
+                                        singleRel($2);
+                                    }
                                     $$->trueList = $2->falseList;
                                     $$->falseList = $2->trueList;
+                                    $$->exType = "log";
                                 }
 		 | factor 
                 {
@@ -1325,6 +1362,10 @@ unary_expression : ADDOP unary_expression
                     $$->start = $1->start;
                     $$->end = $1->end;
                     $$->children.push_back($1);
+                    $$->trueList = $1->trueList;
+                    $$->falseList = $1->falseList;
+                    $$->nextList = $1->nextList;
+                    $$->exType = $1->exType;
                 }
 		 ;
 	
@@ -1384,6 +1425,10 @@ factor	: variable
                                     $$->children.push_back($1);
                                     $$->children.push_back($2);
                                     $$->children.push_back($3);
+                                    $$->trueList = $2->trueList;
+                                    $$->falseList = $2->falseList;
+                                    $$->nextList = $2->nextList;
+                                    $$->exType = $2->exType;
                                 }
 	| CONST_INT
                 {
@@ -1519,10 +1564,16 @@ arguments : arguments COMMA logic_expression
 	      ;
 
 M : {
+    $$ = new SymbolInfo("", "");
     $$->label = giveLabel();
     printToTemp($$->label+":");
 }          
  
+not_bool : {
+    if(isLogic->exType != "rel" || isLogic->exType != "log"){
+        singleRel(isLogic);
+    }
+} 
 
 %%
 int main(int argc,char *argv[])
