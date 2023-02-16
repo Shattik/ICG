@@ -361,7 +361,7 @@ void singleRel(SymbolInfo *si){
 %token<si> CONST_INT CONST_FLOAT CONST_CHAR ADDOP MULOP INCOP RELOP LOGICOP BITOP ID SINGLE_LINE_STRING MULTI_LINE_STRING IF ELSE FOR WHILE DO BREAK INT CHAR FLOAT DOUBLE VOID RETURN SWITCH CASE DEFAULT CONTINUE ASSIGNOP NOT LPAREN RPAREN LCURL RCURL LSQUARE RSQUARE COMMA SEMICOLON DECOP PRINTLN
   
 %type<smbls> declaration_list parameter_list arguments argument_list
-%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start M not_bool
+%type<si> variable factor expression unary_expression term simple_expression rel_expression logic_expression type_specifier expression_statement statement statements var_declaration compound_statement func_declaration func_definition unit program start M not_bool N
 
 // %left 
 // %right
@@ -823,20 +823,24 @@ statement : var_declaration
                                                                         backPatch($3->trueList, $6->label);
                                                                         $$->nextList = merge($3->falseList, $7->nextList);
                                                                     }
-	  | IF LPAREN expression RPAREN not_bool M statement ELSE statement
+	  | IF LPAREN expression RPAREN not_bool M statement ELSE N M statement
                                                             {
                                                                 $$ = new SymbolInfo("", "");
                                                                 $$->nodeName = "statement : IF LPAREN expression RPAREN statement ELSE statement";
                                                                 $$->isLeaf = false;
                                                                 $$->start = $1->start;
-                                                                $$->end = $9->end;
+                                                                $$->end = $11->end;
                                                                 $$->children.push_back($1);
                                                                 $$->children.push_back($2);
                                                                 $$->children.push_back($3);
                                                                 $$->children.push_back($4);
                                                                 $$->children.push_back($7);
-                                                                $$->children.push_back($8);
                                                                 $$->children.push_back($9);
+                                                                $$->children.push_back($11);
+                                                                backPatch($3->trueList, $6->label);
+                                                                backPatch($3->falseList, $10->label);
+                                                                vector<int> temp = merge($7->nextList, $9->nextList);
+                                                                $$->nextList = merge(temp, $11->nextList);
                                                             }
 	  | WHILE LPAREN expression RPAREN statement
                                                 {
@@ -1570,10 +1574,16 @@ M : {
 }          
  
 not_bool : {
-    if(isLogic->exType != "rel" || isLogic->exType != "log"){
+    if(isLogic->exType != "rel" && isLogic->exType != "log"){
         singleRel(isLogic);
     }
 } 
+
+N : {
+    $$ = new SymbolInfo("", "");
+    printToTemp("\tJMP ");
+    $$->nextList.push_back(tempLine);
+}
 
 %%
 int main(int argc,char *argv[])
