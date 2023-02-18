@@ -28,6 +28,7 @@ int tempLine;
 map<int, string> labelMap;
 int labelCount;
 SymbolInfo *isLogic;
+bool gotFor;
 
 void yyerror(char *s)
 {
@@ -782,7 +783,10 @@ statement : var_declaration
                                 $$->start = $1->start;
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
-                                printToTemp("\tPOP AX");
+                                if(!gotFor){
+                                    printToTemp("\tPOP AX");
+                                }
+                                gotFor = false;
                             }
 	  | compound_statement
                             {
@@ -793,20 +797,27 @@ statement : var_declaration
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
                             }
-	  | FOR LPAREN expression_statement expression_statement expression RPAREN statement
+	  | FOR LPAREN expression_statement {gotFor=true;} M expression_statement {if($6->exType!="log" && $6->exType!="rel"){singleRel($6);}} M expression N RPAREN M statement
                                                                                         {
                                                                                             $$ = new SymbolInfo("", "");
                                                                                             $$->nodeName = "statement : FOR LPAREN expression_statement expression_statement expression RPAREN statement";
                                                                                             $$->isLeaf = false;
                                                                                             $$->start = $1->start;
-                                                                                            $$->end = $7->end;
+                                                                                            $$->end = $13->end;
                                                                                             $$->children.push_back($1);
                                                                                             $$->children.push_back($2);
                                                                                             $$->children.push_back($3);
-                                                                                            $$->children.push_back($4);
-                                                                                            $$->children.push_back($5);
                                                                                             $$->children.push_back($6);
-                                                                                            $$->children.push_back($7);
+                                                                                            $$->children.push_back($9);
+                                                                                            $$->children.push_back($11);
+                                                                                            $$->children.push_back($13);
+                                                                                            backPatch($3->nextList, $5->label);
+                                                                                            backPatch($6->trueList, $12->label);
+                                                                                            $$->nextList = $6->falseList;
+                                                                                            backPatch($9->nextList, $5->label);
+                                                                                            backPatch($10->nextList, $5->label);
+                                                                                            backPatch($13->nextList, $8->label);
+                                                                                            printToTemp("\tJMP " + $8->label);
                                                                                         }
 	  | IF LPAREN expression RPAREN not_bool M statement  %prec LOWER_THAN_ELSE 
                                                                     {
@@ -842,18 +853,22 @@ statement : var_declaration
                                                                 vector<int> temp = merge($7->nextList, $9->nextList);
                                                                 $$->nextList = merge(temp, $11->nextList);
                                                             }
-	  | WHILE LPAREN expression RPAREN statement
+	  | WHILE M LPAREN expression not_bool RPAREN M statement
                                                 {
                                                     $$ = new SymbolInfo("", "");
                                                     $$->nodeName = "statement : WHILE LPAREN expression RPAREN statement";
                                                     $$->isLeaf = false;
                                                     $$->start = $1->start;
-                                                    $$->end = $5->end;
+                                                    $$->end = $8->end;
                                                     $$->children.push_back($1);
-                                                    $$->children.push_back($2);
                                                     $$->children.push_back($3);
                                                     $$->children.push_back($4);
-                                                    $$->children.push_back($5);
+                                                    $$->children.push_back($6);
+                                                    $$->children.push_back($8);
+                                                    backPatch($8->nextList, $2->label);
+                                                    backPatch($4->trueList, $7->label);
+                                                    $$->nextList = $4->falseList;
+                                                    printToTemp("\tJMP "+$2->label);
                                                 }
  	  | PRINTLN LPAREN ID RPAREN SEMICOLON
                                             {
@@ -1473,16 +1488,22 @@ factor	: variable
                             printToTemp("\tPOP BX");
                             printToTemp("\tLEA SI, "+$1->getName());
                             printToTemp("\tPUSH [SI + BX]");
-                            printToTemp("\tINC [SI + BX]");
+                            printToTemp("\tMOV AX, [SI + BX]");
+                            printToTemp("\tINC AX");
+                            printToTemp("\tMOV [SI + BX], AX");
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
                             printToTemp("\tPOP SI");
                             printToTemp("\tPUSH [BP - SI]");
-                            printToTemp("\tINC [BP - SI]");
+                            printToTemp("\tMOV AX, [BP - SI]");
+                            printToTemp("\tINC AX");
+                            printToTemp("\tMOV [BP - SI], AX");
                         }
                         else{
                             printToTemp("\tPUSH "+$1->address);
-                            printToTemp("\tINC "+$1->address);
+                            printToTemp("\tMOV AX, "+$1->address);
+                            printToTemp("\tINC AX");
+                            printToTemp("\tMOV "+$1->address+", AX");
                         }
                     }
  	| variable DECOP
@@ -1504,16 +1525,22 @@ factor	: variable
                             printToTemp("\tPOP BX");
                             printToTemp("\tLEA SI, "+$1->getName());
                             printToTemp("\tPUSH [SI + BX]");
-                            printToTemp("\tDEC [SI + BX]");
+                            printToTemp("\tMOV AX, [SI + BX]");
+                            printToTemp("\tDEC AX");
+                            printToTemp("\tMOV [SI + BX], AX");
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
                             printToTemp("\tPOP SI");
                             printToTemp("\tPUSH [BP - SI]");
-                            printToTemp("\tDEC [BP - SI]");
+                            printToTemp("\tMOV AX, [BP - SI]");
+                            printToTemp("\tDEC AX");
+                            printToTemp("\tMOV [BP - SI], AX");
                         }
                         else{
                             printToTemp("\tPUSH "+$1->address);
-                            printToTemp("\tDEC "+$1->address);
+                            printToTemp("\tMOV AX, "+$1->address);
+                            printToTemp("\tDEC AX");
+                            printToTemp("\tMOV "+$1->address+", AX");
                         }
                     }
 	;
