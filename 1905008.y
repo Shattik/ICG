@@ -29,6 +29,7 @@ map<int, string> labelMap;
 int labelCount;
 SymbolInfo *isLogic;
 bool gotFor;
+SymbolInfo *returnStatement;
 
 void yyerror(char *s)
 {
@@ -116,6 +117,7 @@ void addParameter()
     if(paras == NULL){
         return;
     }
+    int starting = 10 + paras->length()*2;
     for(int i=0; i<paras->length(); i++){
         if(paras->v[i].getType()=="VOID" && (paras->v[i].getName()!="" || paras->length()!=1)){
             error_count++;
@@ -127,6 +129,10 @@ void addParameter()
         }
         else{
             table->insert(paras->v[i].getName(), paras->v[i].getType());
+            SymbolInfo *inf = table->lookUpCurrent(paras->v[i].getName());
+            inf->offset = starting;
+            starting -= 2;
+            inf->asmType = "param";
         }
     }
     paras = NULL;
@@ -218,6 +224,12 @@ void funcCode()
     if(inFunction->getName() == "main"){
         printToTemp("\tMOV AX, @DATA");
         printToTemp("\tMOV DS, AX");
+    }
+    else{
+        printToTemp("\tPUSH AX");
+        printToTemp("\tPUSH BX");
+        printToTemp("\tPUSH DX");
+        printToTemp("\tPUSH SI");
     }
     printToTemp("\tPUSH BP");
     printToTemp("\tMOV BP, SP");
@@ -477,12 +489,29 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         $$->children.push_back($4);
                                                                                         $$->children.push_back($5); 
                                                                                         $$->children.push_back($7);
+                                                                                        string l = giveLabel();
+                                                                                        printToTemp(l+":");
+                                                                                        if(returnStatement != NULL){
+                                                                                            backPatch(returnStatement->nextList, l);
+                                                                                        }
+                                                                                        else{
+                                                                                            printToTemp("\tMOV SP, BP");
+                                                                                            printToTemp("\tPOP BP");
+                                                                                            printToTemp("\tPOP SI");
+                                                                                            printToTemp("\tPOP DX");
+                                                                                            printToTemp("\tPOP BX");
+                                                                                            printToTemp("\tPOP AX");
+                                                                                        }
                                                                                         if(inFunction->getName() == "main"){
                                                                                             printToTemp("\tMOV AX, 4CH");
                                                                                             printToTemp("\tINT 21H");
                                                                                         }
+                                                                                        else{
+                                                                                            printToTemp("\tRET " + to_string($4->length()*2));
+                                                                                        }
                                                                                         printToTemp(inFunction->getName()+" ENDP");
                                                                                         inFunction = NULL;
+                                                                                        returnStatement = NULL;
                                                                                     }
 		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();funcCode();} compound_statement
                                                             {
@@ -496,12 +525,29 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 $$->children.push_back($3);
                                                                 $$->children.push_back($4);
                                                                 $$->children.push_back($6);
+                                                                string l = giveLabel();
+                                                                printToTemp(l+":");
+                                                                if(returnStatement != NULL){
+                                                                    backPatch(returnStatement->nextList, l);
+                                                                }
+                                                                else{
+                                                                    printToTemp("\tMOV SP, BP");
+                                                                    printToTemp("\tPOP BP");
+                                                                    printToTemp("\tPOP SI");
+                                                                    printToTemp("\tPOP DX");
+                                                                    printToTemp("\tPOP BX");
+                                                                    printToTemp("\tPOP AX");
+                                                                }
                                                                 if(inFunction->getName() == "main"){
                                                                     printToTemp("\tMOV AX, 4CH");
                                                                     printToTemp("\tINT 21H");
                                                                 }
+                                                                else{
+                                                                    printToTemp("\tRET");
+                                                                }
                                                                 printToTemp(inFunction->getName()+" ENDP");
                                                                 inFunction = NULL;
+                                                                returnStatement = NULL;
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
                                                                     {
@@ -600,6 +646,10 @@ compound_statement : LCURL {table->enterScope();addParameter();} statements RCUR
                                                                         $$->children.push_back($1);
                                                                         $$->children.push_back($3);
                                                                         $$->children.push_back($4);
+                                                                        $$->nextList = $3->nextList;
+                                                                        if(table->getStartOff() != 0){
+                                                                            printToTemp("\tADD SP, " + to_string(table->getOffset()-table->getStartOff()));
+                                                                        }
                                                                     }
  		    | LCURL {table->enterScope();addParameter();} RCURL
                                                     {
@@ -787,6 +837,9 @@ statement : var_declaration
                                     printToTemp("\tPOP AX");
                                 }
                                 gotFor = false;
+                                $$->nextList = $1->nextList;
+                                $$->trueList = $1->trueList;
+                                $$->falseList = $1->falseList;
                             }
 	  | compound_statement
                             {
@@ -796,6 +849,9 @@ statement : var_declaration
                                 $$->start = $1->start;
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
+                                $$->nextList = $1->nextList;
+                                $$->trueList = $1->trueList;
+                                $$->falseList = $1->falseList;
                             }
 	  | FOR LPAREN expression_statement {gotFor=true;} M expression_statement {if($6->exType!="log" && $6->exType!="rel"){singleRel($6);}} M expression N RPAREN M statement
                                                                                         {
@@ -892,6 +948,9 @@ statement : var_declaration
                                                 else if(temp->asmType == "local"){
                                                     printToTemp((string)"\tMOV AX, [BP-"+to_string(temp->offset)+"]");
                                                 }
+                                                else if(temp->asmType == "param"){
+                                                    printToTemp((string)"\tMOV AX, [BP+"+to_string(temp->offset)+"]");
+                                                }
                                                 printToTemp("\tCALL print_output");
                                                 printToTemp("\tCALL new_line");
                                             }
@@ -911,6 +970,27 @@ statement : var_declaration
                                         $$->children.push_back($1);
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
+                                        if(inFunction->getName() == "main"){
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tMOV SP, BP");
+                                            printToTemp("\tPOP BP");
+                                            printToTemp("\tJMP ");
+                                            $$->nextList.push_back(tempLine);
+                                            returnStatement = $$;
+                                        }
+                                        else{
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tMOV CX, AX");
+                                            printToTemp("\tMOV SP, BP");
+                                            printToTemp("\tPOP BP");
+                                            printToTemp("\tPOP SI");
+                                            printToTemp("\tPOP DX");
+                                            printToTemp("\tPOP BX");
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tJMP ");
+                                            $$->nextList.push_back(tempLine);
+                                            returnStatement = $$;
+                                        }
                                     }
 	  ;
 	  
@@ -980,6 +1060,9 @@ variable : ID
                 }
                 else if(sim->asmType=="local"){
                     $$->address = "[BP-" + to_string(sim->offset) + "]";
+                }
+                else if(sim->asmType=="param"){
+                    $$->address = "[BP+" + to_string(sim->offset) + "]";
                 }
             }
 	 | ID LSQUARE expression RSQUARE 
@@ -1432,7 +1515,9 @@ factor	: variable
                                         $$->children.push_back($1);
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
-                                        $$->children.push_back($4);           
+                                        $$->children.push_back($4);       
+                                        printToTemp("\tCALL "+$1->getName());
+                                        printToTemp("\tPUSH CX");    
                                     }
 	| LPAREN expression RPAREN
                                 {

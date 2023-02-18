@@ -98,6 +98,7 @@ private:
 
 public:
     int offset;
+    int startOff;
 
     ScopeTable(int s)
     {
@@ -294,9 +295,11 @@ public:
         current = now;
         if(current->getParent() == NULL){
             current->offset = 0;
+            current->startOff = 0;
         }
         else{
             current->offset = current->getParent()->offset;
+            current->startOff = current->getParent()->offset;
         }
     }
 
@@ -393,6 +396,11 @@ public:
         if(current->getParent() != NULL){
             current->offset = o;
         }
+    }
+
+    int getStartOff()
+    {
+        return current->startOff;
     }
 
 };
