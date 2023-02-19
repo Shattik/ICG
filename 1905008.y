@@ -5,6 +5,9 @@
 #include<cstring>
 #include<cmath>
 #include<map>
+#include<vector>
+#include<deque>
+#include<sstream>
 #include "1905008.h"
 // #define YYSTYPE SymbolInfo*
 
@@ -17,7 +20,7 @@ extern int line_count;
 extern int error_count;
 
 ofstream asmout, optout, tempout;
-ifstream tempFile;
+ifstream tempFile, asmFile;
 SymbolTable *table;
 Symbols *paras;
 FILE *fp;
@@ -29,7 +32,8 @@ map<int, string> labelMap;
 int labelCount;
 SymbolInfo *isLogic;
 bool gotFor;
-SymbolInfo *returnStatement;
+vector <SymbolInfo*> returnStatement;
+SymbolInfo *finalStatement;
 
 void yyerror(char *s)
 {
@@ -364,6 +368,57 @@ void singleRel(SymbolInfo *si){
     si->falseList.push_back(tempLine);
 }
 
+vector<string> split(string line)
+{
+    vector<string> v;
+    stringstream ss(line);
+    string word;
+    while(getline(ss, word, ' ')){
+        v.push_back(word);
+    }
+    return v;
+}
+
+void optimization()
+{
+    string line;
+    deque<string> dq;
+    while(getline(asmFile, line)){
+        if(dq.size() == 0) {
+            dq.push_back(line);
+            continue;
+        }
+        vector<string> v1 = split(dq.back().substr(1, dq.back().size()-1));
+        vector<string> v2 = split(line.substr(1, line.size()-1));
+        if(v1.size() != v2.size()){
+            dq.push_back(line);
+        }
+        else if(v1.size() == 2 && v1[0] == "PUSH" && v2[0] == "POP"){
+            if(v1[1] == v2[1]){
+                dq.pop_back();
+            }
+            else{
+                dq.push_back(line);
+            }
+        }
+        else if(v1.size() == 3 && v1[0] == "MOV" && v2[0] == "MOV"){
+            if(v1[1] == v2[2] && v1[2] == v2[1]){
+                dq.pop_back();
+            }
+            else{
+                dq.push_back(line);
+            }
+        }
+        else{
+            dq.push_back(line);
+        }
+    }
+    while(!dq.empty()){
+        optout<<dq.front()<<endl;
+        dq.pop_front();
+    }
+}
+
 %}
 
 %union{
@@ -491,8 +546,13 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         $$->children.push_back($7);
                                                                                         string l = giveLabel();
                                                                                         printToTemp(l+":");
-                                                                                        if(returnStatement != NULL){
-                                                                                            backPatch(returnStatement->nextList, l);
+                                                                                        if(finalStatement != NULL){
+                                                                                            backPatch(finalStatement->nextList, l);
+                                                                                        }
+                                                                                        if(returnStatement.size() > 0){
+                                                                                            for(int i=0; i<returnStatement.size(); i++){
+                                                                                                backPatch(returnStatement[i]->nextList, l);
+                                                                                            }
                                                                                         }
                                                                                         else{
                                                                                             printToTemp("\tMOV SP, BP");
@@ -511,7 +571,8 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                                         }
                                                                                         printToTemp(inFunction->getName()+" ENDP");
                                                                                         inFunction = NULL;
-                                                                                        returnStatement = NULL;
+                                                                                        returnStatement.clear();
+                                                                                        finalStatement = NULL;
                                                                                     }
 		| type_specifier ID LPAREN RPAREN {defineFunction($2, $1->getType());functionReturn=$1->getType();funcCode();} compound_statement
                                                             {
@@ -527,8 +588,13 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 $$->children.push_back($6);
                                                                 string l = giveLabel();
                                                                 printToTemp(l+":");
-                                                                if(returnStatement != NULL){
-                                                                    backPatch(returnStatement->nextList, l);
+                                                                if(finalStatement != NULL){
+                                                                    backPatch(finalStatement->nextList, l);
+                                                                }
+                                                                if(returnStatement.size() > 0){
+                                                                    for(int i=0; i<returnStatement.size(); i++){
+                                                                        backPatch(returnStatement[i]->nextList, l);
+                                                                    }
                                                                 }
                                                                 else{
                                                                     printToTemp("\tMOV SP, BP");
@@ -547,7 +613,8 @@ func_definition : type_specifier ID LPAREN parameter_list RPAREN {defineFunction
                                                                 }
                                                                 printToTemp(inFunction->getName()+" ENDP");
                                                                 inFunction = NULL;
-                                                                returnStatement = NULL;
+                                                                returnStatement.clear();
+                                                                finalStatement = NULL;
                                                             }
         | type_specifier ID LPAREN error RPAREN compound_statement
                                                                     {
@@ -801,6 +868,9 @@ statements : statement
                             $$->trueList = $1->trueList;
                             $$->falseList = $1->falseList;
                             $$->nextList = $1->nextList;
+                            if(finalStatement == NULL){
+                                finalStatement = $1;
+                            }
                         }
 	   | statements M statement
                         {
@@ -813,6 +883,7 @@ statements : statement
                             $$->children.push_back($3);
                             backPatch($1->nextList, $2->label);
                             $$->nextList = $3->nextList;
+                            finalStatement = $3;
                         }
 	   ;
 	   
@@ -976,7 +1047,7 @@ statement : var_declaration
                                             printToTemp("\tPOP BP");
                                             printToTemp("\tJMP ");
                                             $$->nextList.push_back(tempLine);
-                                            returnStatement = $$;
+                                            returnStatement.push_back($$);
                                         }
                                         else{
                                             printToTemp("\tPOP AX");
@@ -989,7 +1060,7 @@ statement : var_declaration
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tJMP ");
                                             $$->nextList.push_back(tempLine);
-                                            returnStatement = $$;
+                                            returnStatement.push_back($$);
                                         }
                                     }
 	  ;
@@ -1329,13 +1400,17 @@ simple_expression : term
                                             $$->children.push_back($3);
                                             printToTemp("\tPOP BX");
                                             printToTemp("\tPOP AX");
-                                            if($2->getName() == "+"){
+                                            if($3->getName() == "0"){
+                                                printToTemp("\tPUSH AX");
+                                            }
+                                            else if($2->getName() == "+"){
                                                 printToTemp("\tADD AX, BX");
+                                                printToTemp("\tPUSH AX");
                                             }
                                             else{
                                                 printToTemp("\tSUB AX, BX");
+                                                printToTemp("\tPUSH AX");
                                             }
-                                            printToTemp("\tPUSH AX");
                                         }
 		  ;
 					
@@ -1392,7 +1467,11 @@ term :	unary_expression
                                         $$->children.push_back($2);
                                         $$->children.push_back($3);
                                         printToTemp("\tPOP BX");
-                                        if($2->getName() == "*"){
+                                        if($3->getName() == "1"){
+                                            printToTemp("\tPOP AX");
+                                            printToTemp("\tPUSH AX");
+                                        }
+                                        else if($2->getName() == "*"){
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tIMUL BX");
                                             printToTemp("\tPUSH AX");
@@ -1736,6 +1815,9 @@ int main(int argc,char *argv[])
     codeForPrint();
     asmout<<"END MAIN"<<endl;
     cout<<tempLine<<endl;
+
+    asmFile.open("code.asm");
+    optimization();
 	
 	delete table;
 	fclose(fp);
@@ -1743,6 +1825,7 @@ int main(int argc,char *argv[])
     optout.close();
     tempout.close();
     tempFile.close();
+    asmFile.close();
 	return 0;
 }
 
