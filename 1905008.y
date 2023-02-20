@@ -419,6 +419,22 @@ void optimization()
     }
 }
 
+void compForLogic(SymbolInfo *si)
+{
+    string label1 = giveLabel();
+    string label2 = giveLabel();
+    string label3 = giveLabel();
+    printToTemp(label1 + ":");
+    backPatch(si->trueList, label1);
+    printToTemp("\tMOV AX, 1");
+    printToTemp("\tJMP " + label3);
+    printToTemp(label2 + ":");
+    backPatch(si->falseList, label2);
+    printToTemp("\tMOV AX, 0");
+    printToTemp(label3 + ":");
+    printToTemp("\tPUSH AX");
+}
+
 %}
 
 %union{
@@ -1238,7 +1254,8 @@ variable : ID
                                                 else if($1->address == "stack" && $1->asmType == "local"){
                                                     printToTemp("\tPOP AX");
                                                     printToTemp("\tPOP SI");
-                                                    printToTemp("\tMOV [BP - SI], AX");
+                                                    printToTemp("\tNEG SI");
+                                                    printToTemp("\tMOV [BP + SI], AX");
                                                     printToTemp("\tPUSH AX");
                                                 }
                                                 else{
@@ -1373,19 +1390,19 @@ simple_expression : term
                             $$->nextList = $1->nextList;
                             $$->exType = $1->exType;
                         }
-		  | simple_expression ADDOP term 
+		  | simple_expression {if($1->exType=="log" || $1->exType=="rel"){compForLogic($1);}}  ADDOP term 
                                         {
-                                            if($1->getType()=="VOID" || $3->getType()=="VOID"){
+                                            if($1->getType()=="VOID" || $4->getType()=="VOID"){
                                                 error_count++;
                                                 $$ = new SymbolInfo("", "ERROR");
                                             }
-                                            else if($1->getType()=="FLOAT" || $3->getType()=="FLOAT"){
+                                            else if($1->getType()=="FLOAT" || $4->getType()=="FLOAT"){
                                                 $$ = new SymbolInfo("", "FLOAT");
                                             }
                                             else if($1->getType()=="ERROR"){
-                                                $$ = new SymbolInfo("", $3->getType());
+                                                $$ = new SymbolInfo("", $4->getType());
                                             }
-                                            else if($3->getType()=="ERROR"){
+                                            else if($4->getType()=="ERROR"){
                                                 $$ = new SymbolInfo("", $1->getType());
                                             }
                                             else{
@@ -1394,16 +1411,19 @@ simple_expression : term
                                             $$->nodeName = "simple_expression : simple_expression ADDOP term";
                                             $$->isLeaf = false;
                                             $$->start = $1->start;
-                                            $$->end = $3->end;
+                                            $$->end = $4->end;
                                             $$->children.push_back($1);
-                                            $$->children.push_back($2);
                                             $$->children.push_back($3);
+                                            $$->children.push_back($4);
+                                            if($4->exType=="log" || $4->exType=="rel"){
+                                                compForLogic($4);
+                                            }
                                             printToTemp("\tPOP BX");
                                             printToTemp("\tPOP AX");
-                                            if($3->getName() == "0"){
+                                            if($4->getName() == "0"){
                                                 printToTemp("\tPUSH AX");
                                             }
-                                            else if($2->getName() == "+"){
+                                            else if($3->getName() == "+"){
                                                 printToTemp("\tADD AX, BX");
                                                 printToTemp("\tPUSH AX");
                                             }
@@ -1427,33 +1447,33 @@ term :	unary_expression
                             $$->nextList = $1->nextList;
                             $$->exType = $1->exType;
                         }
-     |  term MULOP unary_expression
+     |  term {if($1->exType=="log" || $1->exType=="rel"){compForLogic($1);}} MULOP unary_expression
                                     {
-                                        if($1->getType()=="VOID" || $3->getType()=="VOID"){
+                                        if($1->getType()=="VOID" || $4->getType()=="VOID"){
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }
-                                        else if(($2->getName()=="%" || $2->getName()=="/") && $3->getName()=="0"){
+                                        else if(($3->getName()=="%" || $3->getName()=="/") && $4->getName()=="0"){
                                             error_count++;
                                             $$ = new SymbolInfo("", "ERROR");
                                         }    
-                                        else if($2->getName()=="%" && ($1->getType()=="FLOAT" || $3->getType()=="FLOAT")){
+                                        else if($3->getName()=="%" && ($1->getType()=="FLOAT" || $4->getType()=="FLOAT")){
                                             error_count++;
                                             $$ = new SymbolInfo("", "INT");
                                         }
-                                        else if($2->getName()=="%%"){
+                                        else if($3->getName()=="%%"){
                                             $$ = new SymbolInfo("", "INT");
                                         }
-                                        else if($1->getType()=="INT" && $3->getType()=="INT"){
+                                        else if($1->getType()=="INT" && $4->getType()=="INT"){
                                             $$ = new SymbolInfo("", "INT");
                                         }
-                                        else if($1->getType()=="FLOAT" || $3->getType()=="FLOAT"){
+                                        else if($1->getType()=="FLOAT" || $4->getType()=="FLOAT"){
                                             $$ = new SymbolInfo("", "FLOAT");
                                         }
                                         else if($1->getType()=="ERROR"){
-                                            $$ = new SymbolInfo("", $3->getType());
+                                            $$ = new SymbolInfo("", $4->getType());
                                         }
-                                        else if($3->getType()=="ERROR"){
+                                        else if($4->getType()=="ERROR"){
                                             $$ = new SymbolInfo("", $1->getType());
                                         }
                                         else{
@@ -1462,27 +1482,30 @@ term :	unary_expression
                                         $$->nodeName = "term : term MULOP unary_expression";
                                         $$->isLeaf = false;
                                         $$->start = $1->start;
-                                        $$->end = $3->end;
+                                        $$->end = $4->end;
                                         $$->children.push_back($1);
-                                        $$->children.push_back($2);
                                         $$->children.push_back($3);
+                                        $$->children.push_back($4);
+                                        if($4->exType=="log" || $4->exType=="rel"){
+                                            compForLogic($4);
+                                        }
                                         printToTemp("\tPOP BX");
-                                        if($3->getName() == "1"){
+                                        if($4->getName() == "1" && $3->getName() != "%"){
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tPUSH AX");
                                         }
-                                        else if($2->getName() == "*"){
+                                        else if($3->getName() == "*"){
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tIMUL BX");
                                             printToTemp("\tPUSH AX");
                                         }
-                                        else if($2->getName() == "/"){
+                                        else if($3->getName() == "/"){
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tCWD");
                                             printToTemp("\tIDIV BX");
                                             printToTemp("\tPUSH AX");
                                         }
-                                        else if($2->getName() == "%"){
+                                        else if($3->getName() == "%"){
                                             printToTemp("\tPOP AX");
                                             printToTemp("\tCWD");
                                             printToTemp("\tIDIV BX");
@@ -1507,6 +1530,9 @@ unary_expression : ADDOP unary_expression
                                                 $$->end = $2->end;
                                                 $$->children.push_back($1);
                                                 $$->children.push_back($2);
+                                                if($2->exType == "rel" || $2->exType == "log"){
+                                                    compForLogic($2);
+                                                }
                                                 if($1->getName() == "-"){
                                                     printToTemp("\tPOP AX");
                                                     printToTemp("\tNEG AX");
@@ -1565,7 +1591,8 @@ factor	: variable
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
                             printToTemp("\tPOP SI");
-                            printToTemp("\tMOV AX, [BP - SI]");
+                            printToTemp("\tNEG SI");
+                            printToTemp("\tMOV AX, [BP + SI]");
                         }
                         else{
                             printToTemp("\tMOV AX, "+$1->address);
@@ -1658,10 +1685,11 @@ factor	: variable
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
                             printToTemp("\tPOP SI");
-                            printToTemp("\tPUSH [BP - SI]");
-                            printToTemp("\tMOV AX, [BP - SI]");
+                            printToTemp("\tNEG SI");
+                            printToTemp("\tPUSH [BP + SI]");
+                            printToTemp("\tMOV AX, [BP + SI]");
                             printToTemp("\tINC AX");
-                            printToTemp("\tMOV [BP - SI], AX");
+                            printToTemp("\tMOV [BP + SI], AX");
                         }
                         else{
                             printToTemp("\tPUSH "+$1->address);
@@ -1695,10 +1723,11 @@ factor	: variable
                         }
                         else if($1->address == "stack" && $1->asmType == "local"){
                             printToTemp("\tPOP SI");
-                            printToTemp("\tPUSH [BP - SI]");
-                            printToTemp("\tMOV AX, [BP - SI]");
+                            printToTemp("\tNEG SI");
+                            printToTemp("\tPUSH [BP + SI]");
+                            printToTemp("\tMOV AX, [BP + SI]");
                             printToTemp("\tDEC AX");
-                            printToTemp("\tMOV [BP - SI], AX");
+                            printToTemp("\tMOV [BP + SI], AX");
                         }
                         else{
                             printToTemp("\tPUSH "+$1->address);
@@ -1745,6 +1774,9 @@ arguments : arguments COMMA logic_expression
                                                     $$->insert($1->v[i]);
                                                 }
                                                 $$->insert(*$3);
+                                                if($3->exType == "rel" || $3->exType == "log"){
+                                                    compForLogic($3);
+                                                }
                                             }
 	      | logic_expression
                             {
@@ -1755,6 +1787,9 @@ arguments : arguments COMMA logic_expression
                                 $$->end = $1->end;
                                 $$->children.push_back($1);
                                 $$->insert(*$1);
+                                if($1->exType == "rel" || $1->exType == "log"){
+                                    compForLogic($1);
+                                }
                             }
 	      ;
 
